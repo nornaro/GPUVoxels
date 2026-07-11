@@ -485,6 +485,22 @@ func _setup_ui() -> void:
 	regen_btn.pressed.connect(_on_regen_pressed)
 	hbox.add_child(regen_btn)
 
+	var budget_label := Label.new()
+	budget_label.text = "Per Frame:"
+	budget_label.add_theme_font_size_override("font_size", 14)
+	hbox.add_child(budget_label)
+
+	var budget_spin := SpinBox.new()
+	budget_spin.name = "BudgetSpin"
+	budget_spin.min_value = 1
+	budget_spin.max_value = 16
+	budget_spin.step = 1
+	budget_spin.value = grid.chunks_per_frame
+	budget_spin.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	budget_spin.custom_minimum_size.x = 60
+	budget_spin.value_changed.connect(func(v: float) -> void: grid.chunks_per_frame = int(v))
+	hbox.add_child(budget_spin)
+
 
 func _on_chunk_size_changed(value: float) -> void:
 	grid.clear_grid()

@@ -69,6 +69,11 @@ var _pending_transforms: Dictionary = {}
 # The callback should generate terrain and call place_tile() for each cell in the chunk.
 var chunk_generate_callback: Callable = Callable()
 
+# Per-frame generation budget
+@export_range(1, 16, 1) var chunks_per_frame: int = 4
+var _gen_queue: Array[Vector2i] = []
+var _gen_queue_set: Dictionary = {}  # O(1) dedup
+
 
 func _ready() -> void:
 	_scenario_rid = get_world_3d().scenario
@@ -76,8 +81,22 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_update_active_chunks()
+	_drain_gen_queue()
 	if _chunk_border_dirty:
 		_update_chunk_borders()
+
+
+func _drain_gen_queue() -> void:
+	if _gen_queue.is_empty() or not chunk_generate_callback.is_valid():
+		return
+	var budget := chunks_per_frame
+	while budget > 0 and not _gen_queue.is_empty():
+		var coords: Vector2i = _gen_queue.pop_back()
+		_gen_queue_set.erase(coords)
+		chunk_generate_callback.call(coords)
+		budget -= 1
+	if not _gen_queue.is_empty():
+		_chunk_border_dirty = true
 
 
 func _exit_tree() -> void:
@@ -171,8 +190,9 @@ func _create_chunk(chunk_coords: Vector2i) -> HexChunk:
 				data.get("layer", 0),
 				data.get("custom_data", Vector4.ZERO),
 			)
-	elif chunk_generate_callback.is_valid():
-		chunk_generate_callback.call(chunk_coords)
+	elif chunk_generate_callback.is_valid() and not _gen_queue_set.has(chunk_coords):
+		_gen_queue.append(chunk_coords)
+		_gen_queue_set[chunk_coords] = true
 
 	return chunk
 
@@ -195,6 +215,9 @@ func _clear_all_chunks() -> void:
 	_active_chunk_coords.clear()
 	_mesh_cache.clear()
 	_persistent_tiles.clear()
+	_gen_queue.clear()
+	_gen_queue_set.clear()
+	_chunk_border_dirty = true
 	_chunk_border_dirty = true
 
 
