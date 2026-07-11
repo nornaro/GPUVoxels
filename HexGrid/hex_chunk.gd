@@ -3,12 +3,8 @@ class_name HexChunk
 extends Node3D
 
 # Each chunk stores data for a subset of the grid
-# Using individual instances for now (GPU instancing to be added later)
 
-const CHUNK_CAPACITY: int = 4096  # Max tiles per chunk
-
-signal chunk_loaded
-signal chunk_unloaded
+const CHUNK_CAPACITY: int = 16384  # Max tiles per chunk (CHUNK_SIZE * CHUNK_SIZE)
 
 # Reference to the manager
 var grid_manager = null
@@ -42,7 +38,7 @@ func place_tile(coords: Vector3i, mesh_id: int, elevation: float, layer: int = 0
 	if not can_add_tile():
 		push_warning("HexChunk: Cannot add more tiles, chunk is full (%d/%d)" % [_cells.size(), CHUNK_CAPACITY])
 		return false
-	
+
 	if _cells.has(coords):
 		return false
 
@@ -67,14 +63,14 @@ func place_tile(coords: Vector3i, mesh_id: int, elevation: float, layer: int = 0
 	RenderingServer.instance_set_scenario(inst_rid, _get_scenario_rid())
 	RenderingServer.instance_set_base(inst_rid, mesh_rid)
 	RenderingServer.instance_set_transform(inst_rid, _make_transform(cell))
-	
+
 	if mat_rid.is_valid():
 		RenderingServer.instance_set_surface_override_material(inst_rid, 0, mat_rid)
 
 	# Store references
 	_cells[coords] = cell
 	_instances[coords] = inst_rid
-	
+
 	return true
 
 
@@ -88,7 +84,7 @@ func remove_tile(coords: Vector3i) -> bool:
 
 	_instances.erase(coords)
 	_cells.erase(coords)
-	
+
 	return true
 
 
@@ -141,20 +137,24 @@ func _get_material_rid_for_cell(cell: HexCellData) -> RID:
 func _make_transform(cell: HexCellData) -> Transform3D:
 	var actual_hex_size: float = 1.0
 	var actual_flat_mode: bool = false
-	var actual_prism_height: float = 2.0
-	
+
 	if grid_manager != null:
 		actual_hex_size = grid_manager.hex_size
 		actual_flat_mode = grid_manager.flat_mode
-		actual_prism_height = grid_manager.prism_height
-	
-	var world_pos: Vector3 = HexGridMath.cube_to_world_flat_top(cell.coords, actual_hex_size)
-	
+
+	var abs_pos: Vector3 = HexGridMath.cube_to_world_flat_top(cell.coords, actual_hex_size)
+
 	if actual_flat_mode:
-		world_pos.y += cell.elevation * actual_prism_height
-		return Transform3D(Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, 1.0, 0), Vector3(0, 0, actual_hex_size)), world_pos)
-	else:
-		return Transform3D(Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, cell.elevation, 0), Vector3(0, 0, actual_hex_size)), world_pos)
+		abs_pos.y = 0.0
+		return Transform3D(
+			Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, 1.0, 0), Vector3(0, 0, actual_hex_size)),
+			abs_pos
+		)
+
+	return Transform3D(
+		Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, cell.elevation, 0), Vector3(0, 0, actual_hex_size)),
+		abs_pos
+	)
 
 
 func _free_all_instances() -> void:

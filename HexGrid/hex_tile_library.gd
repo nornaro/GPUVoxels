@@ -4,16 +4,18 @@ extends Resource
 var _top_rids: Dictionary = {}
 var _side_rids: Dictionary = {}
 var _mat_rids: Dictionary = {}
+var _materials: Array = []
 var _names: Dictionary = {}
 var _next_id: int = 0
 
 
-func register_tile(tile_name: String, top_mesh_rid: RID, side_mesh_rid: RID, material_rid: RID) -> int:
+func register_tile(tile_name: String, top_mesh_rid: RID, side_mesh_rid: RID, material: ShaderMaterial) -> int:
 	var id: int = _next_id
 	_next_id += 1
 	_top_rids[id] = top_mesh_rid
 	_side_rids[id] = side_mesh_rid
-	_mat_rids[id] = material_rid
+	_mat_rids[id] = material.get_rid()
+	_materials.append(material)
 	_names[id] = tile_name
 	return id
 
@@ -51,5 +53,11 @@ func clear() -> void:
 	_top_rids.clear()
 	_side_rids.clear()
 	_mat_rids.clear()
+	_materials.clear()
 	_names.clear()
 	_next_id = 0
+
+
+func set_all_shader_parameter(param: String, value) -> void:
+	for mat in _materials:
+		mat.set_shader_parameter(param, value)

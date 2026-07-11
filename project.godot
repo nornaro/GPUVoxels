@@ -21,12 +21,6 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-VoxelData="*res://scripts/Global/voxel_data.gd"
-WorldMap="*res://scripts/Global/world.gd"
-Debugger="*res://scripts/Global/debugger.gd"
-Scenelib="*res://scripts/Global/scenelib.gd"
-_fennara_game_capture="*res://addons/fennara/runtime/game_capture_helper.gd"
-_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 McpBridge="*uid://dw5bvj1fckgfh"
 MCPRuntimeProbe="*res://addons/godot_mcp/runtime/mcp_runtime_probe.gd"
 

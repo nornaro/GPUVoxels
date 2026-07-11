@@ -52,7 +52,6 @@ static func create_prism(hex_size: float, prism_height: float) -> RID:
 		bot_verts.append(Vector3(vx, 0.0, vz))
 
 	var center_top := Vector3(0.0, prism_height, 0.0)
-	var center_bot := Vector3.ZERO
 	var idx := 0
 
 	vertices.append(center_top)
@@ -89,13 +88,13 @@ static func create_prism(hex_size: float, prism_height: float) -> RID:
 
 	for i in 6:
 		var tl := top_row_start + i
-		var tr := top_row_start + (i + 1) % 6
+		var tr_idx := top_row_start + (i + 1) % 6
 		var bl := top_row_start + 6 + i
 		var br := top_row_start + 6 + (i + 1) % 6
 		indices.append(tl)
 		indices.append(bl)
-		indices.append(tr)
-		indices.append(tr)
+		indices.append(tr_idx)
+		indices.append(tr_idx)
 		indices.append(bl)
 		indices.append(br)
 
@@ -231,13 +230,13 @@ static func create_full_prism(hex_size: float, prism_height: float) -> RID:
 
 	for i in 6:
 		var tl := side_top_start + i
-		var tr := side_top_start + (i + 1) % 6
+		var tr_idx := side_top_start + (i + 1) % 6
 		var bl := side_top_start + 6 + i
 		var br := side_top_start + 6 + (i + 1) % 6
 		indices.append(tl)
 		indices.append(bl)
-		indices.append(tr)
-		indices.append(tr)
+		indices.append(tr_idx)
+		indices.append(tr_idx)
 		indices.append(bl)
 		indices.append(br)
 

@@ -2,17 +2,22 @@
 class_name HexGridManager
 extends Node3D
 
-signal tile_placed(coords: Vector3i)
-signal tile_removed(coords: Vector3i)
-signal tile_edited(coords: Vector3i)
 signal flat_mode_changed(flat: bool)
 signal chunk_loaded(chunk_coords: Vector2i)
 signal chunk_unloaded(chunk_coords: Vector2i)
 
-# Chunk configuration - each chunk holds up to CHUNK_SIZE x CHUNK_SIZE tiles
-const CHUNK_SIZE := 128  # 128x128 = 16,384 tiles per chunk
-const MAX_TILES_PER_CHUNK := CHUNK_SIZE * CHUNK_SIZE
-const VISIBLE_CHUNK_RADIUS := 3  # Load chunks within 3 chunks of camera
+# Chunk configuration - each chunk holds up to chunk_size x chunk_size tiles
+@export_range(8, 256, 8) var chunk_size: int = 32:
+	set(v):
+		chunk_size = clampi(v, 8, 256)
+		if is_inside_tree() and Engine.is_editor_hint():
+			_rebuild_all()
+
+@export_range(1, 16, 1) var visible_chunk_radius: int = 3:
+	set(v):
+		visible_chunk_radius = clampi(v, 1, 16)
+		if is_inside_tree():
+			_update_active_chunks()
 
 @export var hex_size: float = 1.0:
 	set(v):
@@ -42,27 +47,46 @@ const VISIBLE_CHUNK_RADIUS := 3  # Load chunks within 3 chunks of camera
 var _chunks: Dictionary = {}
 var _active_chunk_coords: Array[Vector2i] = []
 
+# Persistent tile data for chunk regeneration
+# Vector2i (chunk_coords) -> Dictionary { Vector3i (tile_coords) -> {mesh_id, elevation, layer, custom_data} }
+var _persistent_tiles: Dictionary = {}
+
 # Mesh caching
 var _mesh_cache: Dictionary = {}
 var _scenario_rid: RID = RID()
+
+# Chunk border debug rendering
+var _chunk_border_mesh_rid: RID = RID()
+var _chunk_border_inst_rid: RID = RID()
+var _chunk_border_mat: StandardMaterial3D = null
+var _chunk_border_dirty: bool = true
 
 # Batch update state
 var _batching: bool = false
 var _pending_transforms: Dictionary = {}
 
+# Lazy generation callback: called with chunk_coords when a chunk has no persistent data.
+# The callback should generate terrain and call place_tile() for each cell in the chunk.
+var chunk_generate_callback: Callable = Callable()
+
 
 func _ready() -> void:
 	_scenario_rid = get_world_3d().scenario
-	# Will be managed by chunk system
 
 
 func _process(_delta: float) -> void:
-	# Update active chunks based on camera position
 	_update_active_chunks()
+	if _chunk_border_dirty:
+		_update_chunk_borders()
 
 
 func _exit_tree() -> void:
 	_clear_all_chunks()
+	if _chunk_border_inst_rid.is_valid():
+		RenderingServer.free_rid(_chunk_border_inst_rid)
+	if _chunk_border_mesh_rid.is_valid():
+		RenderingServer.free_rid(_chunk_border_mesh_rid)
+	_chunk_border_mat = null
 
 
 # ============================================================================
@@ -70,54 +94,56 @@ func _exit_tree() -> void:
 # ============================================================================
 
 func _get_chunk_coords(hex_coords: Vector3i) -> Vector2i:
-	# Use cube coordinates directly, dividing Q and R by CHUNK_SIZE
-	# For cube coords (q, r, s), we use q and r as the basis for chunking
 	return Vector2i(
-		int(floorf(float(hex_coords.x) / float(CHUNK_SIZE))),
-		int(floorf(float(hex_coords.y) / float(CHUNK_SIZE)))
+		int(floorf(float(hex_coords.x) / float(chunk_size))),
+		int(floorf(float(hex_coords.y) / float(chunk_size)))
 	)
 
 
 func _get_or_create_chunk(hex_coords: Vector3i) -> HexChunk:
 	var chunk_coords := _get_chunk_coords(hex_coords)
-	
+
 	if not _chunks.has(chunk_coords):
 		_chunks[chunk_coords] = _create_chunk(chunk_coords)
-	
+
 	return _chunks[chunk_coords]
 
 
 func _update_active_chunks() -> void:
 	if camera == null:
-		# No camera - activate all existing chunks
 		for chunk_coords in _chunks:
 			if not _active_chunk_coords.has(chunk_coords):
 				_active_chunk_coords.append(chunk_coords)
 		return
 
-	# Get camera position in hex coordinates
 	var camera_pos := camera.global_transform.origin
 	var camera_hex := HexGridMath.world_to_cube_flat_top(camera_pos, hex_size)
 	var camera_chunk := _get_chunk_coords(camera_hex)
 
-	# Build list of chunks that should be active
 	var new_active: Array[Vector2i] = []
 
-	for x in range(-VISIBLE_CHUNK_RADIUS, VISIBLE_CHUNK_RADIUS + 1):
-		for y in range(-VISIBLE_CHUNK_RADIUS, VISIBLE_CHUNK_RADIUS + 1):
+	for x in range(-visible_chunk_radius, visible_chunk_radius + 1):
+		for y in range(-visible_chunk_radius, visible_chunk_radius + 1):
+			# Hex distance filter: only load chunks in a hex shape
+			if absi(x + y) > visible_chunk_radius:
+				continue
 			var check_coords := Vector2i(camera_chunk.x + x, camera_chunk.y + y)
 			new_active.append(check_coords)
-			# Create chunk if it doesn't exist
 			if not _chunks.has(check_coords):
 				_chunks[check_coords] = _create_chunk(check_coords)
 				chunk_loaded.emit(check_coords)
 
 	# Unload chunks that are no longer active
+	var to_unload: Array[Vector2i] = []
 	for old_coords in _active_chunk_coords:
 		if not new_active.has(old_coords):
-			_unload_chunk(old_coords)
+			to_unload.append(old_coords)
+
+	for coords in to_unload:
+		_unload_chunk(coords)
 
 	_active_chunk_coords = new_active
+	_chunk_border_dirty = true
 
 
 func _create_chunk(chunk_coords: Vector2i) -> HexChunk:
@@ -125,12 +151,29 @@ func _create_chunk(chunk_coords: Vector2i) -> HexChunk:
 	chunk.name = "Chunk_%d_%d" % [chunk_coords.x, chunk_coords.y]
 	chunk.chunk_coords = chunk_coords
 	chunk.grid_manager = self
+	_chunks[chunk_coords] = chunk
 	add_child(chunk)
-	# Position chunk at correct world position using HexGridMath
-	# The chunk's origin is at the center of the first tile in the chunk
-	# First tile in chunk (0,0) is at hex coords (chunk_coords.x * CHUNK_SIZE, chunk_coords.y * CHUNK_SIZE, 0)
-	var first_tile_coords := Vector3i(chunk_coords.x * CHUNK_SIZE, chunk_coords.y * CHUNK_SIZE, 0)
+
+	# Position chunk at world position of its origin tile
+	var q0: int = chunk_coords.x * chunk_size
+	var r0: int = chunk_coords.y * chunk_size
+	var first_tile_coords := Vector3i(q0, r0, -q0 - r0)
 	chunk.position = HexGridMath.cube_to_world_flat_top(first_tile_coords, hex_size)
+
+	# Populate: either from persistent data, or generate lazily via callback
+	if _persistent_tiles.has(chunk_coords):
+		for coords in _persistent_tiles[chunk_coords]:
+			var data: Dictionary = _persistent_tiles[chunk_coords][coords]
+			chunk.place_tile(
+				coords,
+				data["mesh_id"],
+				data["elevation"],
+				data.get("layer", 0),
+				data.get("custom_data", Vector4.ZERO),
+			)
+	elif chunk_generate_callback.is_valid():
+		chunk_generate_callback.call(chunk_coords)
+
 	return chunk
 
 
@@ -138,29 +181,74 @@ func _unload_chunk(chunk_coords: Vector2i) -> void:
 	if _chunks.has(chunk_coords):
 		var chunk: HexChunk = _chunks[chunk_coords]
 		chunk.clear_chunk()
+		chunk.queue_free()
+		_chunks.erase(chunk_coords)
 		chunk_unloaded.emit(chunk_coords)
-		# Keep chunk in memory but clear its data
-		# Optionally: chunk.queue_free(); _chunks.erase(chunk_coords)
 
 
 func _clear_all_chunks() -> void:
 	for chunk_coords in _chunks:
-		_unload_chunk(chunk_coords)
+		var chunk: HexChunk = _chunks[chunk_coords]
+		chunk.clear_chunk()
+		chunk.queue_free()
 	_chunks.clear()
 	_active_chunk_coords.clear()
 	_mesh_cache.clear()
+	_persistent_tiles.clear()
+	_chunk_border_dirty = true
 
 
-func _chunk_loaded(chunk_coords: Vector2i) -> void:
-	pass  # Can connect signal here
+func _update_chunk_borders() -> void:
+	_chunk_border_dirty = false
+	var verts: PackedVector3Array = []
+	var y := 0.02
+	for chunk_coords in _active_chunk_coords:
+		var q0: int = chunk_coords.x * chunk_size
+		var r0: int = chunk_coords.y * chunk_size
+		var q1: int = (chunk_coords.x + 1) * chunk_size
+		var r1: int = (chunk_coords.y + 1) * chunk_size
+		var c0 := HexGridMath.cube_to_world_flat_top(Vector3i(q0, r0, -q0 - r0), hex_size)
+		var c1 := HexGridMath.cube_to_world_flat_top(Vector3i(q1, r0, -q1 - r0), hex_size)
+		var c2 := HexGridMath.cube_to_world_flat_top(Vector3i(q1, r1, -q1 - r1), hex_size)
+		var c3 := HexGridMath.cube_to_world_flat_top(Vector3i(q0, r1, -q0 - r1), hex_size)
+		c0.y = y; c1.y = y; c2.y = y; c3.y = y
+		verts.append_array([c0, c1, c1, c2, c2, c3, c3, c0])
 
+	# Rebuild mesh
+	if _chunk_border_mesh_rid.is_valid():
+		RenderingServer.free_rid(_chunk_border_mesh_rid)
+		_chunk_border_mesh_rid = RID()
 
-func _chunk_unloaded(chunk_coords: Vector2i) -> void:
-	pass  # Can connect signal here
+	# Hide instance if no verts
+	if verts.is_empty():
+		if _chunk_border_inst_rid.is_valid():
+			RenderingServer.instance_set_visible(_chunk_border_inst_rid, false)
+		return
+
+	_chunk_border_mesh_rid = RenderingServer.mesh_create()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	RenderingServer.mesh_add_surface_from_arrays(_chunk_border_mesh_rid, RenderingServer.PRIMITIVE_LINES, arrays)
+
+	# Create instance on first use
+	if not _chunk_border_inst_rid.is_valid():
+		_chunk_border_inst_rid = RenderingServer.instance_create()
+		RenderingServer.instance_set_scenario(_chunk_border_inst_rid, _scenario_rid)
+		RenderingServer.instance_set_base(_chunk_border_inst_rid, _chunk_border_mesh_rid)
+		_chunk_border_mat = StandardMaterial3D.new()
+		_chunk_border_mat.albedo_color = Color(1.0, 0.2, 0.2, 0.8)
+		_chunk_border_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_chunk_border_mat.no_depth_test = true
+		RenderingServer.instance_set_surface_override_material(_chunk_border_inst_rid, 0, _chunk_border_mat.get_rid())
+	else:
+		RenderingServer.instance_set_base(_chunk_border_inst_rid, _chunk_border_mesh_rid)
+	RenderingServer.instance_set_visible(_chunk_border_inst_rid, true)
+	RenderingServer.instance_set_transform(_chunk_border_inst_rid, Transform3D.IDENTITY)
 
 
 # ============================================================================
-# PUBLIC API - Maintains backward compatibility
+# PUBLIC API
 # ============================================================================
 
 func initialize(p_library: HexTileLibrary, p_hex_size: float = 1.0, p_flat: bool = false) -> void:
@@ -176,12 +264,34 @@ func place_tile(coords: Vector3i, mesh_id: int = 0, elevation: float = 1.0, laye
 		push_warning("HexGridManager: invalid cube coords %s (q+r+s must equal 0)" % coords)
 		return false
 
+	# Store persistent data
+	var chunk_coords := _get_chunk_coords(coords)
+	if not _persistent_tiles.has(chunk_coords):
+		_persistent_tiles[chunk_coords] = {}
+	if _persistent_tiles[chunk_coords].has(coords):
+		return false  # Already placed
+	_persistent_tiles[chunk_coords][coords] = {
+		"mesh_id": mesh_id,
+		"elevation": elevation,
+		"layer": layer,
+		"custom_data": custom_data,
+	}
+
+	# Place in active chunk (creates chunk if needed, which auto-populates)
 	var chunk := _get_or_create_chunk(coords)
+	if chunk.has_tile(coords):
+		return true  # Already placed by chunk auto-populate on creation
 	return chunk.place_tile(coords, mesh_id, elevation, layer, custom_data)
 
 
 func remove_tile(coords: Vector3i) -> bool:
 	var chunk_coords := _get_chunk_coords(coords)
+	# Remove from persistent data
+	if _persistent_tiles.has(chunk_coords):
+		_persistent_tiles[chunk_coords].erase(coords)
+		if _persistent_tiles[chunk_coords].is_empty():
+			_persistent_tiles.erase(chunk_coords)
+	# Remove from active chunk
 	if not _chunks.has(chunk_coords):
 		return false
 	return _chunks[chunk_coords].remove_tile(coords)
@@ -189,16 +299,28 @@ func remove_tile(coords: Vector3i) -> bool:
 
 func has_tile(coords: Vector3i) -> bool:
 	var chunk_coords := _get_chunk_coords(coords)
-	if not _chunks.has(chunk_coords):
-		return false
-	return _chunks[chunk_coords].has_tile(coords)
+	if _persistent_tiles.has(chunk_coords) and _persistent_tiles[chunk_coords].has(coords):
+		return true
+	if _chunks.has(chunk_coords):
+		return _chunks[chunk_coords].has_tile(coords)
+	return false
 
 
 func get_cell(coords: Vector3i) -> HexCellData:
 	var chunk_coords := _get_chunk_coords(coords)
-	if not _chunks.has(chunk_coords):
-		return null
-	return _chunks[chunk_coords].get_tile(coords)
+	if _chunks.has(chunk_coords):
+		return _chunks[chunk_coords].get_tile(coords)
+	# Reconstruct from persistent data if chunk not loaded
+	if _persistent_tiles.has(chunk_coords) and _persistent_tiles[chunk_coords].has(coords):
+		var data: Dictionary = _persistent_tiles[chunk_coords][coords]
+		var cell := HexCellData.new()
+		cell.coords = coords
+		cell.mesh_id = data["mesh_id"]
+		cell.elevation = data["elevation"]
+		cell.layer = data.get("layer", 0)
+		cell.custom_data = data.get("custom_data", Vector4.ZERO)
+		return cell
+	return null
 
 
 func clear_grid() -> void:
@@ -207,28 +329,31 @@ func clear_grid() -> void:
 
 func get_tile_count() -> int:
 	var count := 0
-	for chunk_coords in _chunks:
-		if _chunks.has(chunk_coords):
-			count += _chunks[chunk_coords]._cells.size()
+	for chunk_coords in _persistent_tiles:
+		count += _persistent_tiles[chunk_coords].size()
 	return count
 
 
 func get_all_cells() -> Array[HexCellData]:
 	var result: Array[HexCellData] = []
-	for chunk_coords in _chunks:
-		if _chunks.has(chunk_coords):
-			var chunk: HexChunk = _chunks[chunk_coords]
-			for key in chunk._cells:
-				result.append(chunk._cells[key] as HexCellData)
+	for chunk_coords in _persistent_tiles:
+		for coords in _persistent_tiles[chunk_coords]:
+			var data: Dictionary = _persistent_tiles[chunk_coords][coords]
+			var cell := HexCellData.new()
+			cell.coords = coords
+			cell.mesh_id = data["mesh_id"]
+			cell.elevation = data["elevation"]
+			cell.layer = data.get("layer", 0)
+			cell.custom_data = data.get("custom_data", Vector4.ZERO)
+			result.append(cell)
 	return result
 
 
 func get_all_coords() -> Array[Vector3i]:
 	var result: Array[Vector3i] = []
-	for chunk_coords in _chunks:
-		if _chunks.has(chunk_coords):
-			for key in _chunks[chunk_coords]._cells:
-				result.append(key as Vector3i)
+	for chunk_coords in _persistent_tiles:
+		for coords in _persistent_tiles[chunk_coords]:
+			result.append(coords as Vector3i)
 	return result
 
 
@@ -276,14 +401,12 @@ func show_tile(coords: Vector3i) -> void:
 			chunk._set_instance_hidden(chunk._instances[coords] as RID, false)
 
 
-func highlight_tile(coords: Vector3i, active: bool) -> void:
-	# For now, highlighting is not implemented
-	# It will be added when GPU instancing with data texture is implemented
+func highlight_tile(_coords: Vector3i, _active: bool) -> void:
 	pass
 
 
-func tint_tile(coords: Vector3i, color: Color) -> void:
-	pass  # Can be implemented with material overrides
+func tint_tile(_coords: Vector3i, _color: Color) -> void:
+	pass
 
 
 # --- Mode Toggle ---
@@ -293,14 +416,16 @@ func set_flat_mode(flat: bool) -> void:
 
 
 func _apply_flat_mode() -> void:
+	if tile_library != null:
+		tile_library.set_all_shader_parameter("flat_mode", 1.0 if flat_mode else 0.0)
 	for chunk_coords in _chunks:
 		if _chunks.has(chunk_coords):
 			var chunk: HexChunk = _chunks[chunk_coords]
 			for coords in chunk._cells:
 				var cell := chunk._cells[coords] as HexCellData
 				var inst_rid := chunk._instances[coords] as RID
-				if flat_mode:
-					RenderingServer.instance_set_base(inst_rid, chunk._get_mesh_rid_for_cell(cell))
+				RenderingServer.instance_set_base(inst_rid, chunk._get_mesh_rid_for_cell(cell))
+				RenderingServer.instance_set_surface_override_material(inst_rid, 0, chunk._get_material_rid_for_cell(cell))
 				RenderingServer.instance_set_transform(inst_rid, chunk._make_transform(cell))
 
 
@@ -332,12 +457,12 @@ func _flush_batch() -> void:
 
 # --- Raycasting ---
 
-func raycast_hex(camera: Camera3D, mouse_position: Vector2) -> HexCellData:
-	if camera == null:
+func raycast_hex(p_camera: Camera3D, mouse_position: Vector2) -> HexCellData:
+	if p_camera == null:
 		return null
 
-	var ray_origin: Vector3 = camera.project_ray_origin(mouse_position)
-	var ray_dir: Vector3 = camera.project_ray_normal(mouse_position)
+	var ray_origin: Vector3 = p_camera.project_ray_origin(mouse_position)
+	var ray_dir: Vector3 = p_camera.project_ray_normal(mouse_position)
 
 	if absf(ray_dir.y) < 0.0001:
 		return null
@@ -366,8 +491,8 @@ func raycast_hex(camera: Camera3D, mouse_position: Vector2) -> HexCellData:
 	return closest
 
 
-func raycast_hex_coords(camera: Camera3D, mouse_position: Vector2) -> Vector3i:
-	var cell := raycast_hex(camera, mouse_position)
+func raycast_hex_coords(p_camera: Camera3D, mouse_position: Vector2) -> Vector3i:
+	var cell := raycast_hex(p_camera, mouse_position)
 	if cell == null:
 		return Vector3i.ZERO
 	return cell.coords
@@ -377,7 +502,6 @@ func raycast_hex_coords(camera: Camera3D, mouse_position: Vector2) -> Vector3i:
 
 func _rebuild_all() -> void:
 	_clear_all_chunks()
-	# Rebuild from saved data would go here
 
 
 func rebuild_all() -> void:
@@ -395,7 +519,7 @@ func hex_to_world(coords: Vector3i) -> Vector3:
 
 
 func get_used_rect() -> Rect2i:
-	if _chunks.is_empty():
+	if _persistent_tiles.is_empty():
 		return Rect2i()
 
 	var min_q: int = 999999
@@ -403,15 +527,13 @@ func get_used_rect() -> Rect2i:
 	var min_r: int = 999999
 	var max_r: int = -999999
 
-	for chunk_coords in _chunks:
-		if _chunks.has(chunk_coords):
-			var chunk: HexChunk = _chunks[chunk_coords]
-			for coords in chunk._cells:
-				var c: Vector3i = coords as Vector3i
-				min_q = mini(min_q, c.x)
-				max_q = maxi(max_q, c.x)
-				min_r = mini(min_r, c.y)
-				max_r = maxi(max_r, c.y)
+	for chunk_coords in _persistent_tiles:
+		for coords in _persistent_tiles[chunk_coords]:
+			var c: Vector3i = coords as Vector3i
+			min_q = mini(min_q, c.x)
+			max_q = maxi(max_q, c.x)
+			min_r = mini(min_r, c.y)
+			max_r = maxi(max_r, c.y)
 
 	return Rect2i(min_q, min_r, max_q - min_q + 1, max_r - min_r + 1)
 
