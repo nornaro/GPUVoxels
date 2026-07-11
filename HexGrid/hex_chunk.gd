@@ -4,7 +4,7 @@ extends Node3D
 
 # Each chunk stores data for a subset of the grid
 
-const CHUNK_CAPACITY: int = 16384  # Max tiles per chunk (CHUNK_SIZE * CHUNK_SIZE)
+var chunk_capacity: int = 16384  # Set dynamically from grid_manager.chunk_size
 
 # Reference to the manager
 var grid_manager = null
@@ -31,12 +31,12 @@ func _exit_tree() -> void:
 # === Tile Management ===
 
 func can_add_tile() -> bool:
-	return _cells.size() < CHUNK_CAPACITY
+	return _cells.size() < chunk_capacity
 
 
 func place_tile(coords: Vector3i, mesh_id: int, elevation: float, layer: int = 0, custom_data: Vector4 = Vector4.ZERO) -> bool:
 	if not can_add_tile():
-		push_warning("HexChunk: Cannot add more tiles, chunk is full (%d/%d)" % [_cells.size(), CHUNK_CAPACITY])
+		push_warning("HexChunk: Cannot add more tiles, chunk is full (%d/%d)" % [_cells.size(), chunk_capacity])
 		return false
 
 	if _cells.has(coords):

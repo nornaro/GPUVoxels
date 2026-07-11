@@ -1,0 +1,37 @@
+[gd_resource type="ArrayMesh" load_steps=4 format=4 uid="uid://bnw0h16d11cfg"]
+
+[ext_resource type="Texture2D" uid="uid://d3v58iy3kuasl" path="res://Textures/hexagons_medieval.png" id="1_q1r8a"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tjegh"]
+albedo_texture = ExtResource("1_q1r8a")
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_ewnrn"]
+_surfaces = [{
+"aabb": AABB(-0.149109, 0, -0.156782, 0.298218, 0.069301, 0.283622),
+"format": 34896613377,
+"index_count": 54,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAADAAAAAAACAAQAAwAFAAEAAgABAAYAAQAFAAYAAgAGAAcACAAFAAMABAAIAAMABgAFAAkABwAGAAkACQAFAAgACgACAAcABwAJAAoABAACAAoACgAJAAgACgAIAAQA"),
+"name": "hexagons_medieval",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 11,
+"vertex_data": PackedByteArray("/3///xwsAAD/fwAAAAAAABjY//9pbwAAAAAAAMhhAADmJ///aW8AAP9/AACCjQAA//8AAMhhAABytv//T9wAAOQwAAD//wAAGs8AAP//AACMSf//T9wAAA==")
+}]
+blend_shape_mode = 0
+
+[resource]
+_surfaces = [{
+"aabb": AABB(-0.149109, 0, -0.156782, 0.298218, 0.069301, 0.283622),
+"attribute_data": PackedByteArray("CkocpQpKla7BSxyliEyVrsFLHKWITJWuGUscpZRLla4ZSxyllEuVrvtIHKWASJWuCkocmcFLHJlTSByZ+0gcmRlLHJn7SBylgEiVrlNIHKWNR5WuU0gcpY1Hla4KShylCkqVrgpKla4KSpauiEyVrohMla4xTJaulEuVrpRLla5fS5augEiVroBIla61SJaujUeVro1Hla7jR5auCkqVrg=="),
+"format": 34896613399,
+"index_count": 54,
+"index_data": PackedByteArray("AAABAAIAAgABAAMABAAFAAYABgAFAAcACAAJAAoACgAJAAsADAANAA4ADgANAA8ADwANABAAEQASABMAEwASABQAFQAWABcAFwAWABgAGQAaABsAHAAdAB4AHwAgACEAIgAjACQAJQAmACcA"),
+"material": SubResource("StandardMaterial3D_tjegh"),
+"name": "hexagons_medieval",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 40,
+"vertex_data": PackedByteArray("/3///xwsERT/fwAAAAARFBjY//9pbxEU//8AAMhhERQY2P//aW/Vtv//AADIYdW2crb//0/c1bYazwAA///VtnK2//9P3B6VGs8AAP//HpWMSf//T9weleQwAAD//x6V/3///xws/78Y2P//aW//v+Yn//9pb/+/jEn//0/c/79ytv//T9z/v4xJ//9P3NW25DAAAP//1bbmJ///aW/VtgAAAADIYdW25if//2lvERQAAAAAyGERFP9///8cLBEU/38AAAAAERT/fwAAAAAaPP9/AACCjRo8//8AAMhhGjz//wAAyGFezv9/AACCjV7OGs8AAP//Xs4azwAA////v/9/AACCjf+/5DAAAP///7/kMAAA//9ezv9/AACCjV7OAAAAAMhhXs4AAAAAyGEaPP9/AACCjRo8/38AAAAAGjy12tCHtdrQh7Xa0Ie12tCHebGoHHmxqBx5sagcebGoHP///3////9/////f////3////9/////f////3////9/////f6echM6nnITOp5yEzqechM4t+LVaLfi1Wi34tVot+LVaNRlpsjUZabI1GWmy0UsWWtFLFlrRSxZaAAD/fwAA/38AAP9/6CXRy+gl0cvoJdHLajLKZmoyymZqMspm")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_ewnrn")

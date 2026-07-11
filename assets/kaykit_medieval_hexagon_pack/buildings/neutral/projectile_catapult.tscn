@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/projectile_catapult.tres" id="1_joh07"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_sru17"]
+points = PackedVector3Array(0, 0.063197225, 0.12641299, 0.120226, 0.063197225, 0.039052054, 0, 0.141336, -2.5257468e-05, -0.120226, 0.063197225, 0.039052054, -0.0743057, -0.06322489, 0.1022588, 0.07428216, -0.06322489, 0.1022588, 0.07428216, 0.063197225, -0.102284566, 0.120226, -0.06322489, -0.03907782, -0.0743057, 0.063197225, -0.102284566, -0.120226, -0.06322489, -0.03907782, 0, -0.141336, -5.066395e-07, 0, -0.06322489, -0.126414)
+
+[node name="projectile_catapult" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_joh07")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_sru17")

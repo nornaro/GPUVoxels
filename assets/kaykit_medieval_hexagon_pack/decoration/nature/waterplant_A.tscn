@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/waterplant_A.tres" id="1_pkpgo"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_rhoix"]
+points = PackedVector3Array(0.076226994, 0.09471053, -0.06932734, 0.071588516, 0.07446742, -0.03229469, 0.063922405, 0.05322704, -0.011477023, 0.042476684, 0.017403334, 0.0021199062, 0.07098687, 0.112726, -0.122955, 0.05353917, 0.08152595, 0.092737995, 0.05732371, 0.06849679, 0.05393184, -7.1898103e-06, -0.019586, -1.2524426e-05, -0.023490734, 0.018607821, -0.03824863, 0.02190432, 0.09471053, -0.100680515, -0.122044, 0.094904795, -1.2524426e-05, -0.0851496, 0.07973866, 0.026400156, 0.018022746, 0.06849679, 0.07660747, -0.018871658, 0.015810307, 0.034486525, -0.0851496, 0.07973866, -0.02640409, -0.022035144, 0.05322704, -0.06111428, -0.007867381, 0.07446742, -0.07815268, -0.03779435, 0.0448086, 0.0417706, -0.05619303, 0.06269455, 0.03860361)
+
+[node name="waterplant_A" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_pkpgo")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_rhoix")

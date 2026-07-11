@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/tree_single_A_cut.tres" id="1_fv0se"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_itoh3"]
+points = PackedVector3Array(-0.084891, -0.102607, -0.02692325, -0.00045160204, -0.102607, -0.089098, -0.051855996, -0.10257467, 0.072607, -0.06215348, 0.22756837, -0.019737065, -0.0003851652, 0.22756837, -0.06521264, 0.061947845, 0.22760071, -0.020528495, 0.08476841, -0.10254235, -0.027999595, 0.05301229, -0.10254235, 0.07192636, 0.038712062, 0.22760071, 0.052552156, -0.037987605, 0.22760071, 0.05304285)
+
+[node name="tree_single_A_cut" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_fv0se")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_itoh3")

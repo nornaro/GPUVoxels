@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/waterless/hex_coast_A_waterless.tres" id="1_ncymh"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_ncymh"]
+points = PackedVector3Array(1, -1, 0.57735074, 0.99980426, -0.20007831, 0.5771247, 0, -0.20007831, 1.154475, 0, -1, 1.154701, 1, -1, -0.57757586, 0.99980426, -0.050019562, -0.00022554398, 0.99980426, -0.100039124, 0.24979377, 0.9498825, 0, -0.03436029, -0.51487863, 0, 0.7995651, -0.2836727, -0.100039124, 0.99080944, -1, -0.050019562, 0.5771247, -1, -1, 0.5771247, 0, -1, -1.1547, 0, -0.050019562, -1.1547, 0.99980426, -0.050019562, -0.5773498, 0.9498825, 0, -0.5486405, -0.9500783, 0, 0.5484154, -0.5, -0.050019562, 0.8657999, -1, -0.050019562, -0.57757586, -1, -1, -0.57757586, 0, 0, -1.0970554, -0.9500783, 0, -0.5486405)
+
+[node name="hex_coast_A_waterless" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_ncymh")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_ncymh")

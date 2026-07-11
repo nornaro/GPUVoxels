@@ -7,6 +7,7 @@ extends Resource
 @export var layer: int = 0
 @export var custom_data: Vector4 = Vector4.ZERO
 @export var is_visible: bool = true
+@export var distance_from_center: int = 0
 
 
 func to_vector4() -> Vector4:
@@ -31,4 +32,5 @@ func duplicate_data() -> HexCellData:
 	copy.layer = layer
 	copy.custom_data = custom_data
 	copy.is_visible = is_visible
+	copy.distance_from_center = distance_from_center
 	return copy

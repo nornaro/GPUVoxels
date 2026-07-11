@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_open.tres" id="1_1gnd3"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_hbj0v"]
+points = PackedVector3Array(0.09999236, 0.200001, 0.1, 0.13153934, 0.185971, 0.1, 0.09999236, 0.200001, -0.1, -0.1, 0.200001, 0.1, 0.13153934, 0.185971, -0.1, 0.23156801, 0.012760008, 0.1, 0.14822161, 0.15708573, 0.06666014, -0.1, 0.200001, -0.1, -0.1, -1.849141e-06, 0.1, 0.14822161, 0.15708573, -0.066679716, 0.23156801, 0.012760008, -0.1, 0.199664, -0.005638, 0.1, -0.1, -1.849141e-06, -0.1, 0.199664, -0.005638, -0.1)
+
+[node name="crate_open" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_1gnd3")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_hbj0v")

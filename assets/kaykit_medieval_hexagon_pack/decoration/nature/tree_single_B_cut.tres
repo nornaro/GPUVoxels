@@ -1,0 +1,39 @@
+[gd_resource type="ArrayMesh" load_steps=4 format=4 uid="uid://bwb8l2pp5mv1f"]
+
+[ext_resource type="Texture2D" uid="uid://d3v58iy3kuasl" path="res://Textures/hexagons_medieval.png" id="1_3hbrh"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pev7q"]
+albedo_texture = ExtResource("1_3hbrh")
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_3ni3h"]
+_surfaces = [{
+"aabb": AABB(-0.090371, -0.1, -0.095021, 0.180741, 0.23664501, 0.190042),
+"format": 34359742465,
+"index_count": 114,
+"index_data": PackedByteArray("DQABAAIAAgABAAMAAQAOAAMAAQANAA4AAwAFAAIAAwAOAAYABgAFAAMADgAPAAYADgANAA8ABgAPABAAEAAFAAYADwAHABAADwANAAcAEAAHAAgACAAFABAABwARAAgABwANABEACAARAAkACQAFAAgAEQASAAkAEQANABIACQASAAwADAAFAAkAEgATAAwAEgANABMACwAFAAwADAATAAsAEwANAAAAEwAAAAsAAAANABQACwAAAAoACgAFAAsAAAAUAAoABAAFAAoACgAUAAQAFAANAAQAAgAFAAQABAANAAIA"),
+"lods": [0.12766421, PackedByteArray("AAABAAIAAgABAAMABAAAAAIAAwAFAAIAAgAFAAQAAwABAAYABgAFAAMAAQAHAAYAAQAAAAcABgAHAAgACAAFAAYACAAHAAkACQAFAAgABwAAAAkABAAFAAoACgAAAAQACgAFAAsACwAAAAoADAAFAAkACwAFAAwACQAAAAwADAAAAAsA")],
+"name": "hexagons_medieval",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 21,
+"vertex_data": PackedByteArray("dEWpPavsCz4E/9s8vTeGNavsCz5A+7G9BcRkPc3MzL2Xb529vTeGtc3MzL1fmsK96BO5Pc3MzL2tivC8AAAAAM3MzL0AAAAAEcVkvc3MzL0ecJ297USpvavsCz4E/9s8bhS5vc3MzL2tivA8EcVkvc3MzL2Xb5096BO5Pc3MzL2tivA8BcRkPc3MzL2Xb509vTeGtc3MzL1fmsI9XDtRPavsCz6k/Y+9UDpRvavsCz6k/Y+97USpvavsCz4E/9u8bhS5vc3MzL2tivC8UDpRvavsCz6k/Y89vTeGNavsCz5A+7E9XDtRPavsCz6k/Y89dEWpPavsCz4E/9u8")
+}]
+blend_shape_mode = 0
+
+[resource]
+_surfaces = [{
+"aabb": AABB(-0.090371, -0.1, -0.095021, 0.180741, 0.23664501, 0.190042),
+"attribute_data": PackedByteArray("Br5KP79IGD4500g/v0gYPtYeSj+9jig+5utKP72OKD7m60o/vY4oPijTSD+9jig+e4dHP72OKD5c6EY/v0gYPoy6Rj+9jig+KNNIP72OKD4Gvko/v0gYPtYeSj+9jig+5utKP72OKD57h0c/vY4oPlzoRj+/SBg+jLpGP72OKD450yg/v0gYPga+Kj+/SBg+XOgmP79IGD4o00g/vY5IPijTSD+9jkg+1h5KP72OSD4o00g/vY5IPnuHRz+9jkg+e4dHP72OSD7ECUg/vY5IPoy6Rj+9jkg+UI1HP72OSD6dnEk/vY5IPubrSj+9jkg+1h5KP72OSD4RGUo/vY5IPubrSj+9jkg+hgJKP79IGD7bo0c/v0gYPga+Sj+/SBg+XOhGP79IGD6MukY/vY4oPjnTSD+/SBg+hgJKP79IGD7bo0c/v0gYPoYCKj+/SBg+26MnP79IGD5c6CY/v0gYPtujJz+/SBg+OdMoP79IGD6GAio/v0gYPga+Kj+/SBg+jLpGP72OSD4="),
+"format": 34359742487,
+"index_count": 114,
+"index_data": PackedByteArray("IQABAAIAAgABAAUAAwAhAAIAAQAiAAUAIwAhAAMABAAjAAMAAAAjAAQABQAiAAYAIgAkAAYABgAkACUAJAAHACUAJQAHAAgAJgAnAAkACQAnAAsAJwAKAAsACwAKAAwADQAmAAkAKAAmAA0ADwAoAA0ADgAoAA8AEAApACoAKgApACsAKwApABIAEgApACwALAApAC0ALQApAC4ALgApABEAEQApAC8AEwAUABUAFgAUABcAGAAZABMAFwAZABoAMAAbABgAGgAbADAAHgAcABYAFQAcAB0AIAAfAB4AHQAfACAA"),
+"lods": [0.12766421, PackedByteArray("AAABAAIAAwAAAAIABAAAAAMAAgABAAUABQABAAYAAQAHAAYABgAHAAgACQAKAAsACwAKAAwADQAKAAkADgAKAA0ADwAOAA0AEAARABIAEwAUABUAFgAUABcAGAAZABMAFwAZABoAGgAbABgAFQAcAB0AHgAcABYAHQAfACAAIAAfAB4A")],
+"material": SubResource("StandardMaterial3D_pev7q"),
+"name": "hexagons_medieval",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 49,
+"vertex_data": PackedByteArray("dEWpPavsCz4E/9s8vTeGNavsCz5A+7G9BcRkPc3MzL2Xb5296BO5Pc3MzL2tivC86BO5Pc3MzL2tivA8vTeGtc3MzL1fmsK9EcVkvc3MzL0ecJ297USpvavsCz4E/9s8bhS5vc3MzL2tivA8vTeGtc3MzL1fmsI9dEWpPavsCz4E/9s8BcRkPc3MzL2Xb5096BO5Pc3MzL2tivA8EcVkvc3MzL2Xb5097USpvavsCz4E/9s8bhS5vc3MzL2tivA8vTeGNavsCz5A+7G9dEWpPavsCz4E/9s87USpvavsCz4E/9s8vTeGtc3MzL1fmsK9AAAAAM3MzL0AAAAABcRkPc3MzL2Xb529vTeGtc3MzL1fmsI9EcVkvc3MzL2Xb509EcVkvc3MzL0ecJ29AAAAAM3MzL0AAAAAbhS5vc3MzL2tivA8AAAAAM3MzL0AAAAAAAAAAM3MzL0AAAAA6BO5Pc3MzL2tivC8BcRkPc3MzL2Xb509AAAAAM3MzL0AAAAA6BO5Pc3MzL2tivA8XDtRPavsCz6k/Y+9UDpRvavsCz6k/Y+9dEWpPavsCz4E/9u87USpvavsCz4E/9u8bhS5vc3MzL2tivC8vTeGNavsCz5A+7E9XDtRPavsCz6k/Y89UDpRvavsCz6k/Y89XDtRPavsCz6k/Y+9UDpRvavsCz6k/Y+97USpvavsCz4E/9u8UDpRvavsCz6k/Y89vTeGNavsCz5A+7E9XDtRPavsCz6k/Y89dEWpPavsCz4E/9u8bhS5vc3MzL2tivC8DN5kg////z+/+////v//P+38bcsiyv8/mvzyoSSfj0AM3mSD////P7/7///+//8/EQNty/7/7lryIWSD////P/IhZIP///8//38+hP7//78M3mSD3/6Rj5G0EYP+/+3aDN5kg9/+kY9tSxGDIsr/v/IhZIMkn47A8iFkgySfjsD/f///////v/9///////+//3///////7//fwAA////v/9/AAD///+//38AAP///7//fwAA////v/9/AAD///+//38AAP///7//fwAA////v/9/AAD///+//38AAP///7//fwAA////v/9/AAD///+//38AAP///7//fwAA////v/9/AAD///+/7fxtyyLK/z8RA23L/v/uWpr88qEkn49AZAPyod/+kg9kA/Kh3/6SD/9/PoT+//+/kbQRg/7/7dptSxGDIsr/v/9///////+//3///////7//f///////v/9///////+//3///////7//f///////v/9///////+//38AAP///78=")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_3ni3h")

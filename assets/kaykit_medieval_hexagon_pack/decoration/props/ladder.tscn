@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/ladder.tres" id="1_cq8oq"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_2iayo"]
+points = PackedVector3Array(-0.12661, 0.101827525, 0.015742868, -0.087521516, 0, -0.017499, -0.12661, 0.101827525, 0.033248, -0.12661, 0.6618412, 0.015742868, 0.08747193, 0, -0.017499, -0.087521516, 0, 0.017496362, -0.087521516, 0.77, -0.017499, 0.11743894, 0.08049726, 0.033248, -0.12661, 0.6618412, 0.033248, -0.12204926, 0.71414936, 0.015742868, 0.08747193, 0.77, -0.017499, 0.12661, 0.3818344, 0.015742868, 0.12202448, 0.13273004, 0.015742868, 0.11743894, 0.08049726, 0.015742868, 0.08747193, 0, 0.017496362, -0.087521516, 0.77, 0.017496362, 0.12202448, 0.13273004, 0.033248, -0.12204926, 0.71414936, 0.033248, 0.08747193, 0.77, 0.017496362, 0.12202448, 0.6927437, 0.015742868, 0.12661, 0.3818344, 0.033248, 0.12202448, 0.6927437, 0.033248)
+
+[node name="ladder" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_cq8oq")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_2iayo")

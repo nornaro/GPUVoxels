@@ -6,7 +6,7 @@ signal flat_mode_changed(flat: bool)
 signal chunk_loaded(chunk_coords: Vector2i)
 signal chunk_unloaded(chunk_coords: Vector2i)
 
-# Chunk configuration - each chunk holds up to chunk_size x chunk_size tiles
+# Chunk configuration
 @export_range(8, 256, 8) var chunk_size: int = 32:
 	set(v):
 		chunk_size = clampi(v, 8, 256)
@@ -43,12 +43,11 @@ signal chunk_unloaded(chunk_coords: Vector2i)
 # Camera reference for chunk culling
 @export var camera: Camera3D = null
 
-# Chunk storage: chunk_coords (Vector2i) -> HexChunk
+# Chunk storage
 var _chunks: Dictionary = {}
 var _active_chunk_coords: Array[Vector2i] = []
 
 # Persistent tile data for chunk regeneration
-# Vector2i (chunk_coords) -> Dictionary { Vector3i (tile_coords) -> {mesh_id, elevation, layer, custom_data} }
 var _persistent_tiles: Dictionary = {}
 
 # Mesh caching
@@ -65,47 +64,220 @@ var _chunk_border_dirty: bool = true
 var _batching: bool = false
 var _pending_transforms: Dictionary = {}
 
-# Lazy generation callback: called with chunk_coords when a chunk has no persistent data.
-# The callback should generate terrain and call place_tile() for each cell in the chunk.
-var chunk_generate_callback: Callable = Callable()
+# === BACKGROUND TERRAIN GENERATION ===
+var noise_seed: float = 0.0
+var noise_freq: float = 0.15
 
-# Per-frame generation budget
-@export_range(1, 16, 1) var chunks_per_frame: int = 4
-var _gen_queue: Array[Vector2i] = []
-var _gen_queue_set: Dictionary = {}  # O(1) dedup
+# Type mapping: type_index from noise → mesh_id
+var type_mapping: Array[int] = [0, 1, 2, 3, 4]
+
+# Tiles per frame budget for placing results on main thread
+@export_range(64, 16384, 64) var tiles_per_frame: int = 128
+
+# Lookahead: generate chunks beyond visible radius for smooth movement
+@export_range(0, 8, 1) var gen_lookahead: int = 2
+
+# Background thread
+var _gen_thread: Thread = null
+var _gen_running: bool = false
+
+# Thread-safe work queue: chunks the bg thread should generate
+var _gen_work_mutex: Mutex = Mutex.new()
+var _gen_work: Array[Vector2i] = []
+var _gen_work_set: Dictionary = {}
+
+# Thread-safe results queue: completed chunks ready for main thread
+var _gen_result_mutex: Mutex = Mutex.new()
+var _gen_results: Array[Dictionary] = []
+
+# Track which chunks need gen (to avoid double-queueing on main thread side)
+var _needs_gen: Dictionary = {}
 
 
 func _ready() -> void:
 	_scenario_rid = get_world_3d().scenario
+	if not Engine.is_editor_hint():
+		_start_gen_thread()
 
 
 func _process(_delta: float) -> void:
 	_update_active_chunks()
-	_drain_gen_queue()
+	_drain_gen_results()
 	if _chunk_border_dirty:
 		_update_chunk_borders()
 
 
-func _drain_gen_queue() -> void:
-	if _gen_queue.is_empty() or not chunk_generate_callback.is_valid():
-		return
-	var budget := chunks_per_frame
-	while budget > 0 and not _gen_queue.is_empty():
-		var coords: Vector2i = _gen_queue.pop_back()
-		_gen_queue_set.erase(coords)
-		chunk_generate_callback.call(coords)
-		budget -= 1
-	if not _gen_queue.is_empty():
-		_chunk_border_dirty = true
-
-
 func _exit_tree() -> void:
+	_stop_gen_thread()
 	_clear_all_chunks()
 	if _chunk_border_inst_rid.is_valid():
 		RenderingServer.free_rid(_chunk_border_inst_rid)
 	if _chunk_border_mesh_rid.is_valid():
 		RenderingServer.free_rid(_chunk_border_mesh_rid)
 	_chunk_border_mat = null
+
+
+# ============================================================================
+# BACKGROUND THREAD
+# ============================================================================
+
+func _start_gen_thread() -> void:
+	if _gen_running:
+		return
+	_gen_running = true
+	_gen_thread = Thread.new()
+	_gen_thread.start(_gen_thread_func)
+
+
+func _stop_gen_thread() -> void:
+	_gen_running = false
+	if _gen_thread != null and _gen_thread.is_started():
+		_gen_thread.wait_to_finish()
+	_gen_thread = null
+
+
+func _gen_thread_func() -> void:
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.seed = int(noise_seed)
+	noise.frequency = noise_freq
+
+	while _gen_running:
+		var work_item := Vector2i(999999, 999999)
+		_gen_work_mutex.lock()
+		if not _gen_work.is_empty():
+			work_item = _gen_work.pop_back()
+			_gen_work_set.erase(work_item)
+		_gen_work_mutex.unlock()
+
+		if work_item == Vector2i(999999, 999999):
+			OS.delay_usec(500)
+			continue
+
+		var s := int(noise_seed)
+		if s != noise.seed:
+			noise.seed = s
+		if noise_freq != noise.frequency:
+			noise.frequency = noise_freq
+
+		var tiles := _generate_chunk_tiles(work_item, noise)
+
+		_gen_result_mutex.lock()
+		_gen_results.append({"chunk_coords": work_item, "tiles": tiles})
+		_gen_result_mutex.unlock()
+
+
+func _generate_chunk_tiles(chunk_coords: Vector2i, noise: FastNoiseLite) -> Array[Dictionary]:
+	var q0: int = chunk_coords.x * chunk_size
+	var r0: int = chunk_coords.y * chunk_size
+
+	# Batch noise via image
+	var img := noise.get_image(chunk_size, chunk_size, false, false, true)
+
+	var tiles: Array[Dictionary] = []
+	tiles.resize(chunk_size * chunk_size)
+	var idx := 0
+
+	for dq in chunk_size:
+		for dr in chunk_size:
+			var q: int = q0 + dq
+			var r: int = r0 + dr
+			var s_coord: int = -q - r
+
+			var nval: float = img.get_pixel(dq, dr).r * 2.0 - 1.0
+
+			var elevation: float
+			var type_idx: int
+			if nval < -0.2:
+				type_idx = 1
+				elevation = _remap(nval, -1.0, -0.2, 0.15, 0.4)
+			elif nval > 0.5:
+				type_idx = 2
+				elevation = _remap(nval, 0.5, 1.0, 1.8, 4.0)
+			elif nval > 0.25:
+				type_idx = 3
+				elevation = _remap(nval, 0.25, 0.5, 1.0, 1.8)
+			else:
+				type_idx = 0
+				elevation = _remap(nval, -0.2, 0.25, 0.6, 1.2)
+
+			tiles[idx] = {
+				"coords": Vector3i(q, r, s_coord),
+				"type_index": type_idx,
+				"elevation": elevation,
+			}
+			idx += 1
+
+	return tiles
+
+
+static func _remap(value: float, in_min: float, in_max: float, out_min: float, out_max: float) -> float:
+	var t := clampf((value - in_min) / (in_max - in_min), 0.0, 1.0)
+	return lerpf(out_min, out_max, t)
+
+
+func _drain_gen_results() -> void:
+	var budget := tiles_per_frame
+
+	while budget > 0:
+		_gen_result_mutex.lock()
+		if _gen_results.is_empty():
+			_gen_result_mutex.unlock()
+			break
+		var result: Dictionary = _gen_results.pop_front()
+		_gen_result_mutex.unlock()
+
+		var chunk_coords: Vector2i = result["chunk_coords"]
+		var tiles: Array = result["tiles"]
+
+		if not _chunks.has(chunk_coords):
+			continue
+
+		var chunk: HexChunk = _chunks[chunk_coords]
+		var placed := 0
+
+		if not chunk.can_add_tile():
+			_needs_gen.erase(chunk_coords)
+			continue
+
+		for tile in tiles:
+			if placed >= budget:
+				_gen_result_mutex.lock()
+				_gen_results.push_front({"chunk_coords": chunk_coords, "tiles": tiles.slice(placed)})
+				_gen_result_mutex.unlock()
+				break
+
+			var type_idx: int = tile["type_index"]
+			var mesh_id: int = type_mapping[clampi(type_idx, 0, type_mapping.size() - 1)]
+			var coords: Vector3i = tile["coords"]
+			var elevation: float = tile["elevation"]
+
+			if not _persistent_tiles.has(chunk_coords):
+				_persistent_tiles[chunk_coords] = {}
+			_persistent_tiles[chunk_coords][coords] = {
+				"mesh_id": mesh_id,
+				"elevation": elevation,
+				"layer": 0,
+				"custom_data": Vector4.ZERO,
+			}
+
+			if not chunk.place_tile(coords, mesh_id, elevation):
+				continue
+			var cell := chunk.get_tile(coords)
+			if cell != null:
+				cell.distance_from_center = HexGridMath.cube_distance(Vector3i.ZERO, coords)
+			placed += 1
+
+		budget -= placed
+
+	_chunk_border_dirty = true
+
+
+func _place_tile_direct(chunk: HexChunk, coords: Vector3i, mesh_id: int, elevation: float) -> bool:
+	if chunk.has_tile(coords):
+		return false
+	chunk.place_tile(coords, mesh_id, elevation)
+	return true
 
 
 # ============================================================================
@@ -141,9 +313,9 @@ func _update_active_chunks() -> void:
 
 	var new_active: Array[Vector2i] = []
 
+	# Visible chunks
 	for x in range(-visible_chunk_radius, visible_chunk_radius + 1):
 		for y in range(-visible_chunk_radius, visible_chunk_radius + 1):
-			# Hex distance filter: only load chunks in a hex shape
 			if absi(x + y) > visible_chunk_radius:
 				continue
 			var check_coords := Vector2i(camera_chunk.x + x, camera_chunk.y + y)
@@ -151,6 +323,17 @@ func _update_active_chunks() -> void:
 			if not _chunks.has(check_coords):
 				_chunks[check_coords] = _create_chunk(check_coords)
 				chunk_loaded.emit(check_coords)
+
+	# Lookahead chunks: queue for bg gen but don't create chunk nodes yet
+	if gen_lookahead > 0:
+		var look_radius := visible_chunk_radius + gen_lookahead
+		for x in range(-look_radius, look_radius + 1):
+			for y in range(-look_radius, look_radius + 1):
+				if absi(x + y) > look_radius:
+					continue
+				var check_coords := Vector2i(camera_chunk.x + x, camera_chunk.y + y)
+				if not new_active.has(check_coords) and not _needs_gen.has(check_coords):
+					_queue_gen_work(check_coords)
 
 	# Unload chunks that are no longer active
 	var to_unload: Array[Vector2i] = []
@@ -170,6 +353,7 @@ func _create_chunk(chunk_coords: Vector2i) -> HexChunk:
 	chunk.name = "Chunk_%d_%d" % [chunk_coords.x, chunk_coords.y]
 	chunk.chunk_coords = chunk_coords
 	chunk.grid_manager = self
+	chunk.chunk_capacity = chunk_size * chunk_size
 	_chunks[chunk_coords] = chunk
 	add_child(chunk)
 
@@ -179,7 +363,7 @@ func _create_chunk(chunk_coords: Vector2i) -> HexChunk:
 	var first_tile_coords := Vector3i(q0, r0, -q0 - r0)
 	chunk.position = HexGridMath.cube_to_world_flat_top(first_tile_coords, hex_size)
 
-	# Populate: either from persistent data, or generate lazily via callback
+	# Populate from persistent data if available, otherwise queue for bg gen
 	if _persistent_tiles.has(chunk_coords):
 		for coords in _persistent_tiles[chunk_coords]:
 			var data: Dictionary = _persistent_tiles[chunk_coords][coords]
@@ -190,14 +374,17 @@ func _create_chunk(chunk_coords: Vector2i) -> HexChunk:
 				data.get("layer", 0),
 				data.get("custom_data", Vector4.ZERO),
 			)
-	elif chunk_generate_callback.is_valid() and not _gen_queue_set.has(chunk_coords):
-		_gen_queue.append(chunk_coords)
-		_gen_queue_set[chunk_coords] = true
+	else:
+		_queue_gen_work(chunk_coords)
 
 	return chunk
 
 
 func _unload_chunk(chunk_coords: Vector2i) -> void:
+	# Cancel pending generation
+	_cancel_gen_work(chunk_coords)
+	_needs_gen.erase(chunk_coords)
+
 	if _chunks.has(chunk_coords):
 		var chunk: HexChunk = _chunks[chunk_coords]
 		chunk.clear_chunk()
@@ -207,6 +394,18 @@ func _unload_chunk(chunk_coords: Vector2i) -> void:
 
 
 func _clear_all_chunks() -> void:
+	# Clear gen queues
+	_gen_work_mutex.lock()
+	_gen_work.clear()
+	_gen_work_set.clear()
+	_gen_work_mutex.unlock()
+
+	_gen_result_mutex.lock()
+	_gen_results.clear()
+	_gen_result_mutex.unlock()
+
+	_needs_gen.clear()
+
 	for chunk_coords in _chunks:
 		var chunk: HexChunk = _chunks[chunk_coords]
 		chunk.clear_chunk()
@@ -215,10 +414,28 @@ func _clear_all_chunks() -> void:
 	_active_chunk_coords.clear()
 	_mesh_cache.clear()
 	_persistent_tiles.clear()
-	_gen_queue.clear()
-	_gen_queue_set.clear()
 	_chunk_border_dirty = true
-	_chunk_border_dirty = true
+
+
+func _queue_gen_work(chunk_coords: Vector2i) -> void:
+	# Already has persistent data or already has results pending
+	if _persistent_tiles.has(chunk_coords):
+		return
+
+	_needs_gen[chunk_coords] = true
+
+	_gen_work_mutex.lock()
+	if not _gen_work_set.has(chunk_coords):
+		_gen_work.append(chunk_coords)
+		_gen_work_set[chunk_coords] = true
+	_gen_work_mutex.unlock()
+
+
+func _cancel_gen_work(chunk_coords: Vector2i) -> void:
+	_gen_work_mutex.lock()
+	_gen_work.erase(chunk_coords)
+	_gen_work_set.erase(chunk_coords)
+	_gen_work_mutex.unlock()
 
 
 func _update_chunk_borders() -> void:
@@ -237,12 +454,10 @@ func _update_chunk_borders() -> void:
 		c0.y = y; c1.y = y; c2.y = y; c3.y = y
 		verts.append_array([c0, c1, c1, c2, c2, c3, c3, c0])
 
-	# Rebuild mesh
 	if _chunk_border_mesh_rid.is_valid():
 		RenderingServer.free_rid(_chunk_border_mesh_rid)
 		_chunk_border_mesh_rid = RID()
 
-	# Hide instance if no verts
 	if verts.is_empty():
 		if _chunk_border_inst_rid.is_valid():
 			RenderingServer.instance_set_visible(_chunk_border_inst_rid, false)
@@ -254,7 +469,6 @@ func _update_chunk_borders() -> void:
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	RenderingServer.mesh_add_surface_from_arrays(_chunk_border_mesh_rid, RenderingServer.PRIMITIVE_LINES, arrays)
 
-	# Create instance on first use
 	if not _chunk_border_inst_rid.is_valid():
 		_chunk_border_inst_rid = RenderingServer.instance_create()
 		RenderingServer.instance_set_scenario(_chunk_border_inst_rid, _scenario_rid)
@@ -292,7 +506,7 @@ func place_tile(coords: Vector3i, mesh_id: int = 0, elevation: float = 1.0, laye
 	if not _persistent_tiles.has(chunk_coords):
 		_persistent_tiles[chunk_coords] = {}
 	if _persistent_tiles[chunk_coords].has(coords):
-		return false  # Already placed
+		return false
 	_persistent_tiles[chunk_coords][coords] = {
 		"mesh_id": mesh_id,
 		"elevation": elevation,
@@ -300,21 +514,19 @@ func place_tile(coords: Vector3i, mesh_id: int = 0, elevation: float = 1.0, laye
 		"custom_data": custom_data,
 	}
 
-	# Place in active chunk (creates chunk if needed, which auto-populates)
+	# Place in active chunk
 	var chunk := _get_or_create_chunk(coords)
 	if chunk.has_tile(coords):
-		return true  # Already placed by chunk auto-populate on creation
+		return true
 	return chunk.place_tile(coords, mesh_id, elevation, layer, custom_data)
 
 
 func remove_tile(coords: Vector3i) -> bool:
 	var chunk_coords := _get_chunk_coords(coords)
-	# Remove from persistent data
 	if _persistent_tiles.has(chunk_coords):
 		_persistent_tiles[chunk_coords].erase(coords)
 		if _persistent_tiles[chunk_coords].is_empty():
 			_persistent_tiles.erase(chunk_coords)
-	# Remove from active chunk
 	if not _chunks.has(chunk_coords):
 		return false
 	return _chunks[chunk_coords].remove_tile(coords)
@@ -333,7 +545,6 @@ func get_cell(coords: Vector3i) -> HexCellData:
 	var chunk_coords := _get_chunk_coords(coords)
 	if _chunks.has(chunk_coords):
 		return _chunks[chunk_coords].get_tile(coords)
-	# Reconstruct from persistent data if chunk not loaded
 	if _persistent_tiles.has(chunk_coords) and _persistent_tiles[chunk_coords].has(coords):
 		var data: Dictionary = _persistent_tiles[chunk_coords][coords]
 		var cell := HexCellData.new()
@@ -497,11 +708,9 @@ func raycast_hex(p_camera: Camera3D, mouse_position: Vector2) -> HexCellData:
 	var world_point: Vector3 = ray_origin + ray_dir * t
 	var cube_coords: Vector3i = HexGridMath.world_to_cube_flat_top(world_point, hex_size)
 
-	# Check direct hit
 	if has_tile(cube_coords):
 		return get_cell(cube_coords)
 
-	# Check neighbors
 	var closest: HexCellData = null
 	var closest_dist: float = INF
 	for n in HexGridMath.cube_neighbors(cube_coords):

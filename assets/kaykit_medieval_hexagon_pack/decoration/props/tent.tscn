@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/tent.tres" id="1_l0mpp"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_shrhc"]
+points = PackedVector3Array(0, 0.516, 0, 0.258, 0.3439663, 0.258, 0.258, 0.3439663, -0.258, -0.258, 0.3439663, -0.258, -0.258, 0.3439663, 0.258, 0.258, 0.30396318, 0.258, 0.258, 0.30396318, -0.258, -0.258, 0.30396318, -0.258, -0.258, 0.30396318, 0.258, 0.24506965, 0, 0.24506965, 0.24506965, 0, -0.2451202, -0.2451202, 0, -0.2451202, -0.2451202, 0, 0.24506965)
+
+[node name="tent" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_l0mpp")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_shrhc")

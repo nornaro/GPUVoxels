@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/fence_wood_straight.tres" id="1_gvg64"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_rp6bi"]
+points = PackedVector3Array(-1, -0.050013, -0.577351, -1.05, -0.050013, -0.5485287, -1, 0.5, -0.577351, -0.95000976, -0.050013, -0.5485287, -1.05, 0.39996827, -0.5485287, -1.05, -0.050013, 0.5484146, -0.95, 0.39996827, -0.4500807, -0.95000976, 0.39996827, -0.5485287, -1.0000098, 0.5, -0.4500807, -1, 0.5, 0.57735, -0.95, -0.050013, -0.4500807, -1.05, 0.39996827, 0.5484146, -1, -0.050013, 0.57735, -0.95, 0.39996827, 0.44996667, -1.0000098, 0.5, 0.44996667, -0.95000976, 0.39996827, 0.5484146, -0.95, -0.050013, 0.44996667, -0.95000976, -0.050013, 0.5484146)
+
+[node name="fence_wood_straight" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_gvg64")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_rp6bi")

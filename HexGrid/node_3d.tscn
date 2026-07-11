@@ -1,0 +1,1056 @@
+[gd_scene format=3 uid="uid://b0qi0jgrr8s6w"]
+
+[ext_resource type="ArrayMesh" uid="uid://cyg2jrfpw3smp" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_archeryrange_blue.mesh" id="1_mg4h1"]
+[ext_resource type="ArrayMesh" uid="uid://bdgs6otu3vv5k" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_barracks_blue.mesh" id="2_mv2k3"]
+[ext_resource type="ArrayMesh" uid="uid://c6olbluegjc52" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_blacksmith_blue.mesh" id="3_l6pun"]
+[ext_resource type="ArrayMesh" uid="uid://t13l1unjk0gw" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_castle_blue.mesh" id="4_cidvw"]
+[ext_resource type="ArrayMesh" uid="uid://o2hugefhixct" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_church_blue.mesh" id="5_4k2ll"]
+[ext_resource type="ArrayMesh" uid="uid://ldnu4kh6o73y" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_home_A_blue.mesh" id="6_uo6d4"]
+[ext_resource type="ArrayMesh" uid="uid://cvpta2f6bognk" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_home_B_blue.mesh" id="7_fnm0k"]
+[ext_resource type="ArrayMesh" uid="uid://7xoaqtbtse0v" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_lumbermill_blue.mesh" id="8_q2h2s"]
+[ext_resource type="ArrayMesh" uid="uid://xvd7mejkb2sr" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_lumbermill_blue_building_lumbermill_saw_blue.mesh" id="9_xxnor"]
+[ext_resource type="ArrayMesh" uid="uid://xlxukrpekq1i" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_lumbermill_blue_building_lumbermill_top_blue.mesh" id="10_t4upl"]
+[ext_resource type="ArrayMesh" uid="uid://bkalqdovteqaa" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_market_blue.mesh" id="11_tula7"]
+[ext_resource type="ArrayMesh" uid="uid://cflaspgpwaws5" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_mine_blue.mesh" id="12_1f2ca"]
+[ext_resource type="ArrayMesh" uid="uid://b1mt6gsfgtnbg" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tavern_blue.mesh" id="13_iseh1"]
+[ext_resource type="ArrayMesh" uid="uid://s57wq8svxh65" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_A_blue.mesh" id="14_gkmsc"]
+[ext_resource type="ArrayMesh" uid="uid://eov8umj2y5es" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_A_blue_building_tower_A_top_blue.mesh" id="15_v5um7"]
+[ext_resource type="ArrayMesh" uid="uid://brq44n6jrkml" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_base_blue.mesh" id="16_6orkd"]
+[ext_resource type="ArrayMesh" uid="uid://qf250oubrf6o" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_B_blue.mesh" id="17_skyu3"]
+[ext_resource type="ArrayMesh" uid="uid://rxkcsv8d7rtj" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_B_blue_building_tower_B_top_blue.mesh" id="18_ludq2"]
+[ext_resource type="ArrayMesh" uid="uid://cgog2fv7xk1x4" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_catapult_blue.mesh" id="19_x8i5k"]
+[ext_resource type="ArrayMesh" uid="uid://bofdas1x4th2m" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_catapult_blue_catapult_turret_blue.mesh" id="20_30cpx"]
+[ext_resource type="ArrayMesh" uid="uid://cxinm6e38sxe6" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_tower_catapult_blue_catapult_turret_blue_catapult_arm_blue.mesh" id="21_oxwkw"]
+[ext_resource type="ArrayMesh" uid="uid://tnxluhwpi7oa" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_watermill_blue.mesh" id="22_rwmmq"]
+[ext_resource type="ArrayMesh" uid="uid://q48niiq108n1" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_watermill_blue_building_watermill_wheel_blue.mesh" id="23_3hrr6"]
+[ext_resource type="ArrayMesh" uid="uid://ogukkg8f8w36" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_well_blue.mesh" id="24_bmto0"]
+[ext_resource type="ArrayMesh" uid="uid://c8ahp4qj6r1lt" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_windmill_blue.mesh" id="25_gcxde"]
+[ext_resource type="ArrayMesh" uid="uid://bd3jdfe3ceelj" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_windmill_blue_building_windmill_top_blue.mesh" id="26_d4j78"]
+[ext_resource type="ArrayMesh" uid="uid://bwfh6ocflq24r" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_windmill_blue_building_windmill_top_blue_building_windmill_top_fan_blue.mesh" id="27_kaaym"]
+[ext_resource type="ArrayMesh" uid="uid://vho75av5knrv" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_archeryrange_green.mesh" id="28_noqwn"]
+[ext_resource type="ArrayMesh" uid="uid://we0f41unt7b" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_barracks_green.mesh" id="29_wp31x"]
+[ext_resource type="ArrayMesh" uid="uid://dkw1isrnxhpx" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_blacksmith_green.mesh" id="30_teto6"]
+[ext_resource type="ArrayMesh" uid="uid://dkv4kqh71wlls" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_castle_green.mesh" id="31_fy6st"]
+[ext_resource type="ArrayMesh" uid="uid://dvai6g7b3llwc" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_church_green.mesh" id="32_tf3ho"]
+[ext_resource type="ArrayMesh" uid="uid://dxgk5o6cd1u3f" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_home_A_green.mesh" id="33_v2q47"]
+[ext_resource type="ArrayMesh" uid="uid://ddmu1tddngg06" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_home_B_green.mesh" id="34_l5mx8"]
+[ext_resource type="ArrayMesh" uid="uid://bvi8ey7cc0h20" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_lumbermill_green.mesh" id="35_l2x1t"]
+[ext_resource type="ArrayMesh" uid="uid://j2w62qrej6tf" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_lumbermill_green_building_lumbermill_saw_green.mesh" id="36_akari"]
+[ext_resource type="ArrayMesh" uid="uid://ceand4er4ha6d" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_lumbermill_green_building_lumbermill_top_green.mesh" id="37_ilrax"]
+[ext_resource type="ArrayMesh" uid="uid://cubo257qmpylv" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_market_green.mesh" id="38_ess2f"]
+[ext_resource type="ArrayMesh" uid="uid://bpwdfo3vpiblq" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_mine_green.mesh" id="39_4uijq"]
+[ext_resource type="ArrayMesh" uid="uid://byijh6wipiyru" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tavern_green.mesh" id="40_hcgc7"]
+[ext_resource type="ArrayMesh" uid="uid://bgn3eicltqc78" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_A_green.mesh" id="41_0plc5"]
+[ext_resource type="ArrayMesh" uid="uid://sbe1f41uwyrb" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_A_green_building_tower_A_top_green.mesh" id="42_1jhdu"]
+[ext_resource type="ArrayMesh" uid="uid://dpe7bbfryl6k7" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_base_green.mesh" id="43_v2klq"]
+[ext_resource type="ArrayMesh" uid="uid://i3oy24846jrc" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_B_green.mesh" id="44_1em3a"]
+[ext_resource type="ArrayMesh" uid="uid://cvnir14scoo" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_B_green_building_tower_B_top_green.mesh" id="45_bbwjr"]
+[ext_resource type="ArrayMesh" uid="uid://dwxd4bmdm3m1c" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_catapult_green.mesh" id="46_gtp46"]
+[ext_resource type="ArrayMesh" uid="uid://cxlqyx6ukmse5" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_catapult_green_catapult_turret_green.mesh" id="47_p84hv"]
+[ext_resource type="ArrayMesh" uid="uid://o6axy30mhkt6" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_tower_catapult_green_catapult_turret_green_catapult_arm_green.mesh" id="48_g1sdh"]
+[ext_resource type="ArrayMesh" uid="uid://uq43snqvrse3" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_watermill_green.mesh" id="49_iecja"]
+[ext_resource type="ArrayMesh" uid="uid://dhpd25bm1r0ov" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_watermill_green_building_watermill_wheel_green.mesh" id="50_j41ah"]
+[ext_resource type="ArrayMesh" uid="uid://7bvw640g8wa7" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_well_green.mesh" id="51_kxmt2"]
+[ext_resource type="ArrayMesh" uid="uid://w2f2e1y8s6my" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_windmill_green.mesh" id="52_i50gf"]
+[ext_resource type="ArrayMesh" uid="uid://na6tkntk32yv" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_windmill_green_building_windmill_top_green.mesh" id="53_la726"]
+[ext_resource type="ArrayMesh" uid="uid://qe20luiccetg" path="res://assets/kaykit_medieval_hexagon_pack/buildings/green/building_windmill_green_building_windmill_top_green_building_windmill_top_fan_green.mesh" id="54_n51v7"]
+[ext_resource type="ArrayMesh" uid="uid://co5ic8rhpewts" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_bridge_A.mesh" id="55_3pms1"]
+[ext_resource type="ArrayMesh" uid="uid://bgxr7lkhrb30j" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_bridge_B.mesh" id="56_do75l"]
+[ext_resource type="ArrayMesh" uid="uid://dy6338qd781b3" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_destroyed.mesh" id="57_vxx50"]
+[ext_resource type="ArrayMesh" uid="uid://c8trj8jeuhhgi" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_dirt.mesh" id="58_xdulq"]
+[ext_resource type="ArrayMesh" uid="uid://bq8dtr64j65ni" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_grain.mesh" id="59_8g3uo"]
+[ext_resource type="ArrayMesh" uid="uid://kxcb0yhi34qr" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_scaffolding.mesh" id="60_jnbqr"]
+[ext_resource type="ArrayMesh" uid="uid://bulvfr41ywwaa" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_stage_A.mesh" id="61_jsydl"]
+[ext_resource type="ArrayMesh" uid="uid://be3nntlpime1c" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_stage_B.mesh" id="62_kqend"]
+[ext_resource type="ArrayMesh" uid="uid://dx0lf0vr3sah8" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/building_stage_C.mesh" id="63_u7ki2"]
+[ext_resource type="ArrayMesh" uid="uid://c4w5fwhxs05cp" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/fence_stone_straight.mesh" id="64_e7lpf"]
+[ext_resource type="ArrayMesh" uid="uid://dglbcsuh45jkx" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/fence_stone_straight_gate.mesh" id="65_r2jp2"]
+[ext_resource type="ArrayMesh" uid="uid://ba8l3k12er5yt" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/fence_stone_straight_gate_fence_stone_straight_door.mesh" id="66_dfiyo"]
+[ext_resource type="ArrayMesh" uid="uid://cowrn3x3od433" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/fence_wood_straight.mesh" id="67_1uuku"]
+[ext_resource type="ArrayMesh" uid="uid://d3j25vdcygbue" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/fence_wood_straight_gate.mesh" id="68_lrylw"]
+[ext_resource type="ArrayMesh" uid="uid://bxapkrrja58a" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/fence_wood_straight_gate_fence_wood_straight_door.mesh" id="69_sqnsv"]
+[ext_resource type="ArrayMesh" uid="uid://b0n707ov7u8ie" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/projectile_catapult.mesh" id="70_mgs3o"]
+[ext_resource type="ArrayMesh" uid="uid://dobpf82ff3w2e" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_corner_A_gate.mesh" id="71_saecq"]
+[ext_resource type="ArrayMesh" uid="uid://dwa4om2cr5ncp" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_corner_A_gate_door_left.mesh" id="72_une3e"]
+[ext_resource type="ArrayMesh" uid="uid://cv8xtej4mkxd3" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_corner_A_gate_door_right.mesh" id="73_whvrg"]
+[ext_resource type="ArrayMesh" uid="uid://b7j1x7ay8kmgt" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_corner_A_inside.mesh" id="74_vnsl0"]
+[ext_resource type="ArrayMesh" uid="uid://0fr51rb74ks3" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_corner_A_outside.mesh" id="75_51vu4"]
+[ext_resource type="ArrayMesh" uid="uid://dihu64phrod2p" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_corner_B_inside.mesh" id="76_donjw"]
+[ext_resource type="ArrayMesh" uid="uid://bfv3jjgs77y1u" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_corner_B_outside.mesh" id="77_ok7kc"]
+[ext_resource type="ArrayMesh" uid="uid://d3sbnxyriyrdb" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_straight.mesh" id="78_hkbas"]
+[ext_resource type="ArrayMesh" uid="uid://boqtji0rr0dn4" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_straight_gate.mesh" id="79_iyxwx"]
+[ext_resource type="ArrayMesh" uid="uid://biqxa4i3pipkx" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_straight_gate_door_left.mesh" id="80_fhhj4"]
+[ext_resource type="ArrayMesh" uid="uid://pcvtjfw0frky" path="res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/wall_straight_gate_door_right.mesh" id="81_k54vr"]
+[ext_resource type="ArrayMesh" uid="uid://dgq73ogeremqa" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_archeryrange_red.mesh" id="82_orb8l"]
+[ext_resource type="ArrayMesh" uid="uid://c06ol6on55jb1" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_barracks_red.mesh" id="83_27s36"]
+[ext_resource type="ArrayMesh" uid="uid://ci4evrp6fbajm" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_blacksmith_red.mesh" id="84_wxegf"]
+[ext_resource type="ArrayMesh" uid="uid://x1jctjsgg7ib" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_castle_red.mesh" id="85_javl5"]
+[ext_resource type="ArrayMesh" uid="uid://b741gnl4wpqtx" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_church_red.mesh" id="86_pbu6g"]
+[ext_resource type="ArrayMesh" uid="uid://couf1d4jqeeqa" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_home_A_red.mesh" id="87_bocl1"]
+[ext_resource type="ArrayMesh" uid="uid://bff6es21vqrly" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_home_B_red.mesh" id="88_6n5kj"]
+[ext_resource type="ArrayMesh" uid="uid://d3tkh51bpgipi" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_lumbermill_red.mesh" id="89_1vguq"]
+[ext_resource type="ArrayMesh" uid="uid://dfa3p6en28xxk" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_lumbermill_red_building_lumbermill_saw_red.mesh" id="90_gbqd6"]
+[ext_resource type="ArrayMesh" uid="uid://dlf23prlboefm" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_lumbermill_red_building_lumbermill_top_red.mesh" id="91_krcr3"]
+[ext_resource type="ArrayMesh" uid="uid://teligrn2oj0w" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_market_red.mesh" id="92_7boxw"]
+[ext_resource type="ArrayMesh" uid="uid://d34l2n4buft4q" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_mine_red.mesh" id="93_4risg"]
+[ext_resource type="ArrayMesh" uid="uid://78xuxufn3q7y" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tavern_red.mesh" id="94_lr7q1"]
+[ext_resource type="ArrayMesh" uid="uid://c0u5mqoxa02mu" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_A_red.mesh" id="95_lhwa3"]
+[ext_resource type="ArrayMesh" uid="uid://tbrqjjayl5hl" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_A_red_building_tower_A_top_red.mesh" id="96_yn46v"]
+[ext_resource type="ArrayMesh" uid="uid://c4hv4xfj0f3hc" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_base_red.mesh" id="97_m2rlr"]
+[ext_resource type="ArrayMesh" uid="uid://doepikawvu6wa" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_B_red.mesh" id="98_02n63"]
+[ext_resource type="ArrayMesh" uid="uid://dyhbnpy3n1tfx" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_B_red_building_tower_B_top_red.mesh" id="99_nw8te"]
+[ext_resource type="ArrayMesh" uid="uid://cvstsuiolkjwn" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_catapult_red.mesh" id="100_r3bam"]
+[ext_resource type="ArrayMesh" uid="uid://k1wqggrn021f" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_catapult_red_catapult_turret_red.mesh" id="101_frtw4"]
+[ext_resource type="ArrayMesh" uid="uid://j2lo1km858e2" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_catapult_red_catapult_turret_red_catapult_arm_red.mesh" id="102_2esuj"]
+[ext_resource type="ArrayMesh" uid="uid://cx4i4luyumkn1" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_watermill_red.mesh" id="103_w6o5q"]
+[ext_resource type="ArrayMesh" uid="uid://36epn40ffu8e" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_watermill_red_building_watermill_wheel_red.mesh" id="104_wjddx"]
+[ext_resource type="ArrayMesh" uid="uid://ovkyrstblspi" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_well_red.mesh" id="105_75j0l"]
+[ext_resource type="ArrayMesh" uid="uid://covybc5ocow4r" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_windmill_red.mesh" id="106_ssskt"]
+[ext_resource type="ArrayMesh" uid="uid://ioegn6cek8k1" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_windmill_red_building_windmill_top_red.mesh" id="107_vll4k"]
+[ext_resource type="ArrayMesh" uid="uid://cn3kl7hbboryt" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_windmill_red_building_windmill_top_red_building_windmill_top_fan_red.mesh" id="108_bhgvi"]
+[ext_resource type="ArrayMesh" uid="uid://bdjnrbcg4n6uf" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_archeryrange_yellow.mesh" id="109_pkh58"]
+[ext_resource type="ArrayMesh" uid="uid://byhlir12eabtp" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_barracks_yellow.mesh" id="110_yvxlp"]
+[ext_resource type="ArrayMesh" uid="uid://f18c6nwj151" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_blacksmith_yellow.mesh" id="111_1vwmb"]
+[ext_resource type="ArrayMesh" uid="uid://ddjmea6ji72tt" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_castle_yellow.mesh" id="112_g4nin"]
+[ext_resource type="ArrayMesh" uid="uid://ymg12701xyfb" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_church_yellow.mesh" id="113_ule34"]
+[ext_resource type="ArrayMesh" uid="uid://ciky2g51vx5ca" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_home_A_yellow.mesh" id="114_nn4jl"]
+[ext_resource type="ArrayMesh" uid="uid://hyjwmgymt04t" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_home_B_yellow.mesh" id="115_gb1gf"]
+[ext_resource type="ArrayMesh" uid="uid://d2fpjwnaam2h6" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_lumbermill_yellow.mesh" id="116_ilobl"]
+[ext_resource type="ArrayMesh" uid="uid://dxq07dgdf13w7" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_lumbermill_yellow_building_lumbermill_saw_yellow.mesh" id="117_n0xp8"]
+[ext_resource type="ArrayMesh" uid="uid://8igwb44parv7" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_lumbermill_yellow_building_lumbermill_top_yellow.mesh" id="118_0pc22"]
+[ext_resource type="ArrayMesh" uid="uid://d116ayt4swlu1" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_market_yellow.mesh" id="119_k0rqs"]
+[ext_resource type="ArrayMesh" uid="uid://cm3tadhtt1qjk" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_mine_yellow.mesh" id="120_3g3vd"]
+[ext_resource type="ArrayMesh" uid="uid://cgisooe2nrr1o" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tavern_yellow.mesh" id="121_ie21i"]
+[ext_resource type="ArrayMesh" uid="uid://d24tviiqxvprc" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_A_yellow.mesh" id="122_m0r8b"]
+[ext_resource type="ArrayMesh" uid="uid://dmhyhwdsmaib6" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_A_yellow_building_tower_A_top_yellow.mesh" id="123_0slny"]
+[ext_resource type="ArrayMesh" uid="uid://bvagdrw2slvlj" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_base_yellow.mesh" id="124_g6rvd"]
+[ext_resource type="ArrayMesh" uid="uid://2j3y3yu3sfxd" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_B_yellow.mesh" id="125_d80f5"]
+[ext_resource type="ArrayMesh" uid="uid://s60ffwtqjfbn" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_B_yellow_building_tower_B_top_yellow.mesh" id="126_5blpt"]
+[ext_resource type="ArrayMesh" uid="uid://cjd6id2xvc0vb" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_catapult_yellow.mesh" id="127_ehl6j"]
+[ext_resource type="ArrayMesh" uid="uid://bxvxf60rh65mq" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_catapult_yellow_catapult_turret_yellow.mesh" id="128_vxs36"]
+[ext_resource type="ArrayMesh" uid="uid://ytxw8e2ln8yy" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_tower_catapult_yellow_catapult_turret_yellow_catapult_arm_yellow.mesh" id="129_u6nnn"]
+[ext_resource type="ArrayMesh" uid="uid://clovrsvyra82o" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_watermill_yellow.mesh" id="130_x84a5"]
+[ext_resource type="ArrayMesh" uid="uid://bayd4gqylwplh" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_watermill_yellow_building_watermill_wheel_yellow.mesh" id="131_0svhr"]
+[ext_resource type="ArrayMesh" uid="uid://y78eydp7u0ou" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_well_yellow.mesh" id="132_smawn"]
+[ext_resource type="ArrayMesh" uid="uid://lw506cj2knka" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_windmill_yellow.mesh" id="133_jpo7q"]
+[ext_resource type="ArrayMesh" uid="uid://bxk4gw1enlitb" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_windmill_yellow_building_windmill_top_yellow.mesh" id="134_501p1"]
+[ext_resource type="ArrayMesh" uid="uid://dykpholuvjdec" path="res://assets/kaykit_medieval_hexagon_pack/buildings/yellow/building_windmill_yellow_building_windmill_top_yellow_building_windmill_top_fan_yellow.mesh" id="135_160fk"]
+[ext_resource type="ArrayMesh" uid="uid://0vfxognp25ki" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/cloud_big.mesh" id="136_5shsf"]
+[ext_resource type="ArrayMesh" uid="uid://bufy8ryvpts7i" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/cloud_small.mesh" id="137_3hkqb"]
+[ext_resource type="ArrayMesh" uid="uid://bcq62lghcfsvx" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hills_A.mesh" id="138_hxfxl"]
+[ext_resource type="ArrayMesh" uid="uid://dg5rqfevgjhpr" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hills_A_trees.mesh" id="139_omgcj"]
+[ext_resource type="ArrayMesh" uid="uid://b4dqta4ighep8" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hills_B.mesh" id="140_fmiy0"]
+[ext_resource type="ArrayMesh" uid="uid://fa8w3adobbok" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hills_B_trees.mesh" id="141_q8skj"]
+[ext_resource type="ArrayMesh" uid="uid://7mpwlq2t8aka" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hills_C.mesh" id="142_2lwmh"]
+[ext_resource type="ArrayMesh" uid="uid://hd5ti36u4jx7" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hills_C_trees.mesh" id="143_lwv0x"]
+[ext_resource type="ArrayMesh" uid="uid://b0j8whs6bcq8e" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hill_single_A.mesh" id="144_f4hyr"]
+[ext_resource type="ArrayMesh" uid="uid://co7exrmvin3t8" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hill_single_B.mesh" id="145_8nyk5"]
+[ext_resource type="ArrayMesh" uid="uid://cfpri8kvurmux" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/hill_single_C.mesh" id="146_ryi6m"]
+[ext_resource type="ArrayMesh" uid="uid://4xrruwupxa3t" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_A.mesh" id="147_fxppa"]
+[ext_resource type="ArrayMesh" uid="uid://c1qf60jpxvwsd" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_A_grass.mesh" id="148_somn8"]
+[ext_resource type="ArrayMesh" uid="uid://dp86b8kbl23y8" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_A_grass_trees.mesh" id="149_xmupj"]
+[ext_resource type="ArrayMesh" uid="uid://6nd388iw76oe" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_B.mesh" id="150_fcm2e"]
+[ext_resource type="ArrayMesh" uid="uid://cbaqm1g1k4rlu" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_B_grass.mesh" id="151_nylia"]
+[ext_resource type="ArrayMesh" uid="uid://beab7gdm4431i" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_B_grass_trees.mesh" id="152_jat1v"]
+[ext_resource type="ArrayMesh" uid="uid://dn0uqaulrne22" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_C.mesh" id="153_l2yss"]
+[ext_resource type="ArrayMesh" uid="uid://b2boef2a6jppy" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_C_grass.mesh" id="154_pg0un"]
+[ext_resource type="ArrayMesh" uid="uid://bv1s1jimkj8ti" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_C_grass_trees.mesh" id="155_lspvw"]
+[ext_resource type="ArrayMesh" uid="uid://chcm058onyctx" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_A.mesh" id="156_rh28f"]
+[ext_resource type="ArrayMesh" uid="uid://cemxfi6qoh1c5" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_B.mesh" id="157_g7l1u"]
+[ext_resource type="ArrayMesh" uid="uid://bitvnes1owthl" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_C.mesh" id="158_ijcto"]
+[ext_resource type="ArrayMesh" uid="uid://cf0aav5g70nfs" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_D.mesh" id="159_5yelu"]
+[ext_resource type="ArrayMesh" uid="uid://bhae0x22wmyj2" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_E.mesh" id="160_fqgiv"]
+[ext_resource type="ArrayMesh" uid="uid://ddblo8o8ksrg" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_A_cut.mesh" id="161_tntxy"]
+[ext_resource type="ArrayMesh" uid="uid://br3gdh2373718" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_A_large.mesh" id="162_08r4q"]
+[ext_resource type="ArrayMesh" uid="uid://6l4ak1ps4d16" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_A_medium.mesh" id="163_kc7s8"]
+[ext_resource type="ArrayMesh" uid="uid://bd1nkypa2vxt3" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_A_small.mesh" id="164_rcvvv"]
+[ext_resource type="ArrayMesh" uid="uid://bpv8qogojonal" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_B_cut.mesh" id="165_6v2cf"]
+[ext_resource type="ArrayMesh" uid="uid://ccob2k4ijt4oc" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_B_large.mesh" id="166_ro63h"]
+[ext_resource type="ArrayMesh" uid="uid://deehq01we2uve" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_B_medium.mesh" id="167_t0qxs"]
+[ext_resource type="ArrayMesh" uid="uid://biebi8e7ybgy0" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_B_small.mesh" id="168_2o6xp"]
+[ext_resource type="ArrayMesh" uid="uid://g1wbaqpxeqsu" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/tree_single_A.mesh" id="169_fcndm"]
+[ext_resource type="ArrayMesh" uid="uid://bb8a5kml50u44" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/tree_single_A_cut.mesh" id="170_mgk5p"]
+[ext_resource type="ArrayMesh" uid="uid://c8i4iiho7dlfg" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/tree_single_B.mesh" id="171_apapr"]
+[ext_resource type="ArrayMesh" uid="uid://cq5j7m0qtsaf" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/tree_single_B_cut.mesh" id="172_irnuq"]
+[ext_resource type="ArrayMesh" uid="uid://cdqelxkwfsn22" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/waterlily_A.mesh" id="173_ae2qm"]
+[ext_resource type="ArrayMesh" uid="uid://kkia5h3ohmvs" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/waterlily_B.mesh" id="174_oq26g"]
+[ext_resource type="ArrayMesh" uid="uid://2wctp8r5v13v" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/waterplant_A.mesh" id="175_ioxes"]
+[ext_resource type="ArrayMesh" uid="uid://b1ovgfl1l704v" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/waterplant_B.mesh" id="176_gqll3"]
+[ext_resource type="ArrayMesh" uid="uid://bl4k2pmqafk3k" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/waterplant_C.mesh" id="177_1qb83"]
+[ext_resource type="ArrayMesh" uid="uid://bs2e527sq37qo" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/barrel.mesh" id="178_hfver"]
+[ext_resource type="ArrayMesh" uid="uid://5k6o6k3x2pvr" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/bucket_arrows.mesh" id="179_es2ka"]
+[ext_resource type="ArrayMesh" uid="uid://dfp0fxi3ssos4" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/bucket_empty.mesh" id="180_rdgtl"]
+[ext_resource type="ArrayMesh" uid="uid://txu262rlrfvd" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/bucket_water.mesh" id="181_6xn0n"]
+[ext_resource type="ArrayMesh" uid="uid://c1owg8v3jcfxm" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_A_big.mesh" id="182_e07g4"]
+[ext_resource type="ArrayMesh" uid="uid://dbmsiujv1u5nc" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_A_small.mesh" id="183_uc86d"]
+[ext_resource type="ArrayMesh" uid="uid://bm5kjfw01pm3v" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_B_big.mesh" id="184_4m1dg"]
+[ext_resource type="ArrayMesh" uid="uid://bx5kyv5c1i0vl" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_B_small.mesh" id="185_sl2bb"]
+[ext_resource type="ArrayMesh" uid="uid://df0omb6njxcrp" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_long_A.mesh" id="186_tqy77"]
+[ext_resource type="ArrayMesh" uid="uid://dspdkx8c6w52m" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_long_B.mesh" id="187_sts3q"]
+[ext_resource type="ArrayMesh" uid="uid://dvcb0r1bw20mm" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_long_C.mesh" id="188_07vdp"]
+[ext_resource type="ArrayMesh" uid="uid://dfmr4d6sdaehe" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_long_empty.mesh" id="189_ryhsq"]
+[ext_resource type="ArrayMesh" uid="uid://byid8bwj1r21s" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/crate_open.mesh" id="190_qmb0h"]
+[ext_resource type="ArrayMesh" uid="uid://c06eh0u66bfh7" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/flag_blue.mesh" id="191_m211n"]
+[ext_resource type="ArrayMesh" uid="uid://bdsamhpe0ggyv" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/flag_green.mesh" id="192_1y60y"]
+[ext_resource type="ArrayMesh" uid="uid://dvfptbg5aym40" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/flag_red.mesh" id="193_jkk0o"]
+[ext_resource type="ArrayMesh" uid="uid://msqtcvmgcct4" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/flag_yellow.mesh" id="194_4nvr2"]
+[ext_resource type="ArrayMesh" uid="uid://cqjree5axkh8l" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/ladder.mesh" id="195_boeam"]
+[ext_resource type="ArrayMesh" uid="uid://bggbwfwgorcox" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/pallet.mesh" id="196_gm5e4"]
+[ext_resource type="ArrayMesh" uid="uid://de1lajgew5j1b" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/resource_lumber.mesh" id="197_ocql4"]
+[ext_resource type="ArrayMesh" uid="uid://i87gpot6a74r" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/resource_stone.mesh" id="198_rul7u"]
+[ext_resource type="ArrayMesh" uid="uid://di2seqd162dmr" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/sack.mesh" id="199_tjtyc"]
+[ext_resource type="ArrayMesh" uid="uid://bl40a1kyv2hwv" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/target.mesh" id="200_cuflx"]
+[ext_resource type="ArrayMesh" uid="uid://cm8vw2vs4j4ym" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/tent.mesh" id="201_yopb1"]
+[ext_resource type="ArrayMesh" uid="uid://bpt5tidw7u8ja" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/weaponrack.mesh" id="202_dp06a"]
+[ext_resource type="ArrayMesh" uid="uid://ddoymnqxo3i6l" path="res://assets/kaykit_medieval_hexagon_pack/decoration/props/wheelbarrow.mesh" id="203_8m067"]
+[ext_resource type="ArrayMesh" uid="uid://diu1ix3btbcqo" path="res://assets/kaykit_medieval_hexagon_pack/tiles/base/hex_grass.mesh" id="204_sftgg"]
+[ext_resource type="ArrayMesh" uid="uid://buv3yfo7dkls3" path="res://assets/kaykit_medieval_hexagon_pack/tiles/base/hex_grass_bottom.mesh" id="205_7d0i4"]
+[ext_resource type="ArrayMesh" uid="uid://qx67ildd0i08" path="res://assets/kaykit_medieval_hexagon_pack/tiles/base/hex_grass_sloped_high.mesh" id="206_3x78u"]
+[ext_resource type="ArrayMesh" uid="uid://cpbdp1x3xfwql" path="res://assets/kaykit_medieval_hexagon_pack/tiles/base/hex_grass_sloped_low.mesh" id="207_un0qr"]
+[ext_resource type="ArrayMesh" uid="uid://bry3aee26r24a" path="res://assets/kaykit_medieval_hexagon_pack/tiles/base/hex_water.mesh" id="208_ir7fw"]
+[ext_resource type="ArrayMesh" uid="uid://6qpkd00yj7bx" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/hex_coast_A.mesh" id="209_vubw1"]
+[ext_resource type="ArrayMesh" uid="uid://bj3asdpdj1o26" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/hex_coast_B.mesh" id="210_t7v3e"]
+[ext_resource type="ArrayMesh" uid="uid://d2cpgff0fwykh" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/hex_coast_C.mesh" id="211_bjokl"]
+[ext_resource type="ArrayMesh" uid="uid://bpppmlaphi745" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/hex_coast_D.mesh" id="212_foowb"]
+[ext_resource type="ArrayMesh" uid="uid://ykv8t68v3go5" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/hex_coast_E.mesh" id="213_jxcex"]
+[ext_resource type="ArrayMesh" uid="uid://dbs0ju4yhno1s" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/waterless/hex_coast_A_waterless.mesh" id="214_406lq"]
+[ext_resource type="ArrayMesh" uid="uid://d1fkowg2ejo0p" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/waterless/hex_coast_B_waterless.mesh" id="215_kxlpa"]
+[ext_resource type="ArrayMesh" uid="uid://b6isl6glrgxx0" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/waterless/hex_coast_C_waterless.mesh" id="216_caism"]
+[ext_resource type="ArrayMesh" uid="uid://42uqht54xvj5" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/waterless/hex_coast_D_waterless.mesh" id="217_afkah"]
+[ext_resource type="ArrayMesh" uid="uid://sj8jt2k4rwv" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/waterless/hex_coast_E_waterless.mesh" id="218_kpatw"]
+[ext_resource type="ArrayMesh" uid="uid://xew2ufyo0anv" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_A.mesh" id="219_sslp1"]
+[ext_resource type="ArrayMesh" uid="uid://c7j5huau5ox54" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_A_curvy.mesh" id="220_ftiad"]
+[ext_resource type="ArrayMesh" uid="uid://c2gtwhd5t6uw5" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_B.mesh" id="221_mil2p"]
+[ext_resource type="ArrayMesh" uid="uid://bqg8a7h6t21v1" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_C.mesh" id="222_4wdmk"]
+[ext_resource type="ArrayMesh" uid="uid://cfy28o6ii21yi" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_crossing_A.mesh" id="223_nuh2c"]
+[ext_resource type="ArrayMesh" uid="uid://clvimrcdwbuxe" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_crossing_B.mesh" id="224_0hlw2"]
+[ext_resource type="ArrayMesh" uid="uid://dc17u1jg1kmqn" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_D.mesh" id="225_dius0"]
+[ext_resource type="ArrayMesh" uid="uid://b35dcp1i6q2ch" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_E.mesh" id="226_g7p8d"]
+[ext_resource type="ArrayMesh" uid="uid://cmcfluf0k2qui" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_F.mesh" id="227_5t63i"]
+[ext_resource type="ArrayMesh" uid="uid://clgslbxmms2a7" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_G.mesh" id="228_aqlhq"]
+[ext_resource type="ArrayMesh" uid="uid://vbhd4pbjqroi" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_H.mesh" id="229_yf18b"]
+[ext_resource type="ArrayMesh" uid="uid://vt6ptpqth1bm" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_I.mesh" id="230_nx2cn"]
+[ext_resource type="ArrayMesh" uid="uid://l5hf4ucoauy0" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_J.mesh" id="231_ogtiu"]
+[ext_resource type="ArrayMesh" uid="uid://blsj0nd2jxl2r" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_K.mesh" id="232_lkuhg"]
+[ext_resource type="ArrayMesh" uid="uid://c7pt03venhqxd" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/hex_river_L.mesh" id="233_wsrnm"]
+[ext_resource type="ArrayMesh" uid="uid://no76d1lt0vi5" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_A_curvy_waterless.mesh" id="234_0pv0w"]
+[ext_resource type="ArrayMesh" uid="uid://c7jlgmhi21g51" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_A_waterless.mesh" id="235_5uxq8"]
+[ext_resource type="ArrayMesh" uid="uid://if5cluihec35" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_B_waterless.mesh" id="236_srm0p"]
+[ext_resource type="ArrayMesh" uid="uid://doqh6adu5fs3r" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_crossing_A_waterless.mesh" id="237_e2mma"]
+[ext_resource type="ArrayMesh" uid="uid://dk1lbxu0368ct" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_crossing_B_waterless.mesh" id="238_0u48a"]
+[ext_resource type="ArrayMesh" uid="uid://b460lugh76aln" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_C_waterless.mesh" id="239_yj5qt"]
+[ext_resource type="ArrayMesh" uid="uid://cn4knts6ksexm" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_D_waterless.mesh" id="240_rdnvx"]
+[ext_resource type="ArrayMesh" uid="uid://c6a1ctjfijuso" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_E_waterless.mesh" id="241_81blq"]
+[ext_resource type="ArrayMesh" uid="uid://dyprytitpxrev" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_F_waterless.mesh" id="242_1umns"]
+[ext_resource type="ArrayMesh" uid="uid://xk8gyc0sswiv" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_G_waterless.mesh" id="243_b8rq0"]
+[ext_resource type="ArrayMesh" uid="uid://c3s11uwgirigh" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_H_waterless.mesh" id="244_k6kf7"]
+[ext_resource type="ArrayMesh" uid="uid://j45jf3sa6qtx" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_I_waterless.mesh" id="245_bx3gu"]
+[ext_resource type="ArrayMesh" uid="uid://bdofm3v81gxij" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_J_waterless.mesh" id="246_p6nfn"]
+[ext_resource type="ArrayMesh" uid="uid://gf3hoe6ol60c" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_K_waterless.mesh" id="247_51iwh"]
+[ext_resource type="ArrayMesh" uid="uid://bd4nrjv5wsnt4" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_L_waterless.mesh" id="248_o6dyk"]
+[ext_resource type="ArrayMesh" uid="uid://l61qogbs6kko" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_A.mesh" id="249_p5v5m"]
+[ext_resource type="ArrayMesh" uid="uid://6hgdahqhyfa5" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_A_sloped_high.mesh" id="250_pb388"]
+[ext_resource type="ArrayMesh" uid="uid://cqxwmd4fe6ax6" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_A_sloped_low.mesh" id="251_bn0jy"]
+[ext_resource type="ArrayMesh" uid="uid://csqqf8tvdnrps" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_B.mesh" id="252_1ang7"]
+[ext_resource type="ArrayMesh" uid="uid://5x3a5sajle7d" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_C.mesh" id="253_biydt"]
+[ext_resource type="ArrayMesh" uid="uid://bf0cunch7o4ev" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_D.mesh" id="254_ybbw1"]
+[ext_resource type="ArrayMesh" uid="uid://d0aahqn56sdrk" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_E.mesh" id="255_w6rkk"]
+[ext_resource type="ArrayMesh" uid="uid://dkpqp5npcdfr4" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_F.mesh" id="256_g8ql6"]
+[ext_resource type="ArrayMesh" uid="uid://d3uqt6ctc87o6" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_G.mesh" id="257_expra"]
+[ext_resource type="ArrayMesh" uid="uid://ctjgqepmtu7o" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_H.mesh" id="258_8ksm5"]
+[ext_resource type="ArrayMesh" uid="uid://dysjas5r7v23c" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_I.mesh" id="259_teynb"]
+[ext_resource type="ArrayMesh" uid="uid://ddqx0k66xdy4l" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_J.mesh" id="260_nmyjv"]
+[ext_resource type="ArrayMesh" uid="uid://1riqijvxtdb5" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_K.mesh" id="261_kgshh"]
+[ext_resource type="ArrayMesh" uid="uid://ggxvgw17aw3v" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_L.mesh" id="262_sjwhi"]
+[ext_resource type="ArrayMesh" uid="uid://tpxlqacg0fgd" path="res://assets/kaykit_medieval_hexagon_pack/tiles/roads/hex_road_M.mesh" id="263_je3oy"]
+
+[node name="Node3D" type="Node3D" unique_id=1581449541]
+
+[node name="BuildingArcheryrangeBlue" type="MeshInstance3D" parent="." unique_id=1629345997]
+mesh = ExtResource("1_mg4h1")
+
+[node name="BuildingBarracksBlue" type="MeshInstance3D" parent="." unique_id=803197251]
+mesh = ExtResource("2_mv2k3")
+
+[node name="BuildingBlacksmithBlue" type="MeshInstance3D" parent="." unique_id=791505932]
+mesh = ExtResource("3_l6pun")
+
+[node name="BuildingCastleBlue" type="MeshInstance3D" parent="." unique_id=1761395472]
+mesh = ExtResource("4_cidvw")
+
+[node name="BuildingChurchBlue" type="MeshInstance3D" parent="." unique_id=1332639002]
+mesh = ExtResource("5_4k2ll")
+
+[node name="BuildingHomeABlue" type="MeshInstance3D" parent="." unique_id=1913586497]
+mesh = ExtResource("6_uo6d4")
+
+[node name="BuildingHomeBBlue" type="MeshInstance3D" parent="." unique_id=476201779]
+mesh = ExtResource("7_fnm0k")
+
+[node name="BuildingLumbermillBlue" type="MeshInstance3D" parent="." unique_id=506723390]
+mesh = ExtResource("8_q2h2s")
+
+[node name="BuildingLumbermillBlueBuildingLumbermillSawBlue" type="MeshInstance3D" parent="." unique_id=1472747263]
+mesh = ExtResource("9_xxnor")
+
+[node name="BuildingLumbermillBlueBuildingLumbermillTopBlue" type="MeshInstance3D" parent="." unique_id=1775371296]
+mesh = ExtResource("10_t4upl")
+
+[node name="BuildingMarketBlue" type="MeshInstance3D" parent="." unique_id=2077658957]
+mesh = ExtResource("11_tula7")
+
+[node name="BuildingMineBlue" type="MeshInstance3D" parent="." unique_id=1578941625]
+mesh = ExtResource("12_1f2ca")
+
+[node name="BuildingTavernBlue" type="MeshInstance3D" parent="." unique_id=2032391761]
+mesh = ExtResource("13_iseh1")
+
+[node name="BuildingTowerABlue" type="MeshInstance3D" parent="." unique_id=2089939482]
+mesh = ExtResource("14_gkmsc")
+
+[node name="BuildingTowerABlueBuildingTowerATopBlue" type="MeshInstance3D" parent="." unique_id=102177908]
+mesh = ExtResource("15_v5um7")
+
+[node name="BuildingTowerBaseBlue" type="MeshInstance3D" parent="." unique_id=1453205806]
+mesh = ExtResource("16_6orkd")
+
+[node name="BuildingTowerBBlue" type="MeshInstance3D" parent="." unique_id=1306277510]
+mesh = ExtResource("17_skyu3")
+
+[node name="BuildingTowerBBlueBuildingTowerBTopBlue" type="MeshInstance3D" parent="." unique_id=710989923]
+mesh = ExtResource("18_ludq2")
+
+[node name="BuildingTowerCatapultBlue" type="MeshInstance3D" parent="." unique_id=1692230412]
+mesh = ExtResource("19_x8i5k")
+
+[node name="BuildingTowerCatapultBlueCatapultTurretBlue" type="MeshInstance3D" parent="." unique_id=1591625451]
+mesh = ExtResource("20_30cpx")
+
+[node name="BuildingTowerCatapultBlueCatapultTurretBlueCatapultArmBlue" type="MeshInstance3D" parent="." unique_id=326490664]
+mesh = ExtResource("21_oxwkw")
+
+[node name="BuildingWatermillBlue" type="MeshInstance3D" parent="." unique_id=2077834015]
+mesh = ExtResource("22_rwmmq")
+
+[node name="BuildingWatermillBlueBuildingWatermillWheelBlue" type="MeshInstance3D" parent="." unique_id=1921794302]
+mesh = ExtResource("23_3hrr6")
+
+[node name="BuildingWellBlue" type="MeshInstance3D" parent="." unique_id=1523697272]
+mesh = ExtResource("24_bmto0")
+
+[node name="BuildingWindmillBlue" type="MeshInstance3D" parent="." unique_id=1766712631]
+mesh = ExtResource("25_gcxde")
+
+[node name="BuildingWindmillBlueBuildingWindmillTopBlue" type="MeshInstance3D" parent="." unique_id=931508725]
+mesh = ExtResource("26_d4j78")
+
+[node name="BuildingWindmillBlueBuildingWindmillTopBlueBuildingWindmillTopFanBlue" type="MeshInstance3D" parent="." unique_id=1275232477]
+mesh = ExtResource("27_kaaym")
+
+[node name="BuildingArcheryrangeGreen" type="MeshInstance3D" parent="." unique_id=1438151876]
+mesh = ExtResource("28_noqwn")
+
+[node name="BuildingBarracksGreen" type="MeshInstance3D" parent="." unique_id=918555326]
+mesh = ExtResource("29_wp31x")
+
+[node name="BuildingBlacksmithGreen" type="MeshInstance3D" parent="." unique_id=34451797]
+mesh = ExtResource("30_teto6")
+
+[node name="BuildingCastleGreen" type="MeshInstance3D" parent="." unique_id=1286074069]
+mesh = ExtResource("31_fy6st")
+
+[node name="BuildingChurchGreen" type="MeshInstance3D" parent="." unique_id=1801607239]
+mesh = ExtResource("32_tf3ho")
+
+[node name="BuildingHomeAGreen" type="MeshInstance3D" parent="." unique_id=1392730939]
+mesh = ExtResource("33_v2q47")
+
+[node name="BuildingHomeBGreen" type="MeshInstance3D" parent="." unique_id=235537878]
+mesh = ExtResource("34_l5mx8")
+
+[node name="BuildingLumbermillGreen" type="MeshInstance3D" parent="." unique_id=600887986]
+mesh = ExtResource("35_l2x1t")
+
+[node name="BuildingLumbermillGreenBuildingLumbermillSawGreen" type="MeshInstance3D" parent="." unique_id=1349604161]
+mesh = ExtResource("36_akari")
+
+[node name="BuildingLumbermillGreenBuildingLumbermillTopGreen" type="MeshInstance3D" parent="." unique_id=1444260821]
+mesh = ExtResource("37_ilrax")
+
+[node name="BuildingMarketGreen" type="MeshInstance3D" parent="." unique_id=956948691]
+mesh = ExtResource("38_ess2f")
+
+[node name="BuildingMineGreen" type="MeshInstance3D" parent="." unique_id=1005785742]
+mesh = ExtResource("39_4uijq")
+
+[node name="BuildingTavernGreen" type="MeshInstance3D" parent="." unique_id=313966956]
+mesh = ExtResource("40_hcgc7")
+
+[node name="BuildingTowerAGreen" type="MeshInstance3D" parent="." unique_id=1554365763]
+mesh = ExtResource("41_0plc5")
+
+[node name="BuildingTowerAGreenBuildingTowerATopGreen" type="MeshInstance3D" parent="." unique_id=1310149504]
+mesh = ExtResource("42_1jhdu")
+
+[node name="BuildingTowerBaseGreen" type="MeshInstance3D" parent="." unique_id=479184029]
+mesh = ExtResource("43_v2klq")
+
+[node name="BuildingTowerBGreen" type="MeshInstance3D" parent="." unique_id=1276345246]
+mesh = ExtResource("44_1em3a")
+
+[node name="BuildingTowerBGreenBuildingTowerBTopGreen" type="MeshInstance3D" parent="." unique_id=1535384120]
+mesh = ExtResource("45_bbwjr")
+
+[node name="BuildingTowerCatapultGreen" type="MeshInstance3D" parent="." unique_id=1922788589]
+mesh = ExtResource("46_gtp46")
+
+[node name="BuildingTowerCatapultGreenCatapultTurretGreen" type="MeshInstance3D" parent="." unique_id=2140965015]
+mesh = ExtResource("47_p84hv")
+
+[node name="BuildingTowerCatapultGreenCatapultTurretGreenCatapultArmGreen" type="MeshInstance3D" parent="." unique_id=1332360301]
+mesh = ExtResource("48_g1sdh")
+
+[node name="BuildingWatermillGreen" type="MeshInstance3D" parent="." unique_id=1164869462]
+mesh = ExtResource("49_iecja")
+
+[node name="BuildingWatermillGreenBuildingWatermillWheelGreen" type="MeshInstance3D" parent="." unique_id=1015661091]
+mesh = ExtResource("50_j41ah")
+
+[node name="BuildingWellGreen" type="MeshInstance3D" parent="." unique_id=1915579412]
+mesh = ExtResource("51_kxmt2")
+
+[node name="BuildingWindmillGreen" type="MeshInstance3D" parent="." unique_id=1045956294]
+mesh = ExtResource("52_i50gf")
+
+[node name="BuildingWindmillGreenBuildingWindmillTopGreen" type="MeshInstance3D" parent="." unique_id=394929118]
+mesh = ExtResource("53_la726")
+
+[node name="BuildingWindmillGreenBuildingWindmillTopGreenBuildingWindmillTopFanGreen" type="MeshInstance3D" parent="." unique_id=1606538538]
+mesh = ExtResource("54_n51v7")
+
+[node name="BuildingBridgeA" type="MeshInstance3D" parent="." unique_id=214228764]
+mesh = ExtResource("55_3pms1")
+
+[node name="BuildingBridgeB" type="MeshInstance3D" parent="." unique_id=655858550]
+mesh = ExtResource("56_do75l")
+
+[node name="BuildingDestroyed" type="MeshInstance3D" parent="." unique_id=65158099]
+mesh = ExtResource("57_vxx50")
+
+[node name="BuildingDirt" type="MeshInstance3D" parent="." unique_id=1838187498]
+mesh = ExtResource("58_xdulq")
+
+[node name="BuildingGrain" type="MeshInstance3D" parent="." unique_id=267985901]
+mesh = ExtResource("59_8g3uo")
+
+[node name="BuildingScaffolding" type="MeshInstance3D" parent="." unique_id=1185694336]
+mesh = ExtResource("60_jnbqr")
+
+[node name="BuildingStageA" type="MeshInstance3D" parent="." unique_id=446865870]
+mesh = ExtResource("61_jsydl")
+
+[node name="BuildingStageB" type="MeshInstance3D" parent="." unique_id=53334291]
+mesh = ExtResource("62_kqend")
+
+[node name="BuildingStageC" type="MeshInstance3D" parent="." unique_id=300118728]
+mesh = ExtResource("63_u7ki2")
+
+[node name="FenceStoneStraight" type="MeshInstance3D" parent="." unique_id=1728738613]
+mesh = ExtResource("64_e7lpf")
+
+[node name="FenceStoneStraightGate" type="MeshInstance3D" parent="." unique_id=43672476]
+mesh = ExtResource("65_r2jp2")
+
+[node name="FenceStoneStraightGateFenceStoneStraightDoor" type="MeshInstance3D" parent="." unique_id=425504583]
+mesh = ExtResource("66_dfiyo")
+
+[node name="FenceWoodStraight" type="MeshInstance3D" parent="." unique_id=414940720]
+mesh = ExtResource("67_1uuku")
+
+[node name="FenceWoodStraightGate" type="MeshInstance3D" parent="." unique_id=111750686]
+mesh = ExtResource("68_lrylw")
+
+[node name="FenceWoodStraightGateFenceWoodStraightDoor" type="MeshInstance3D" parent="." unique_id=1292436842]
+mesh = ExtResource("69_sqnsv")
+
+[node name="ProjectileCatapult" type="MeshInstance3D" parent="." unique_id=66957997]
+mesh = ExtResource("70_mgs3o")
+
+[node name="WallCornerAGate" type="MeshInstance3D" parent="." unique_id=1174017413]
+mesh = ExtResource("71_saecq")
+
+[node name="WallCornerAGateDoorLeft" type="MeshInstance3D" parent="." unique_id=1214561276]
+mesh = ExtResource("72_une3e")
+
+[node name="WallCornerAGateDoorRight" type="MeshInstance3D" parent="." unique_id=1598206099]
+mesh = ExtResource("73_whvrg")
+
+[node name="WallCornerAInside" type="MeshInstance3D" parent="." unique_id=2099429475]
+mesh = ExtResource("74_vnsl0")
+
+[node name="WallCornerAOutside" type="MeshInstance3D" parent="." unique_id=1191100362]
+mesh = ExtResource("75_51vu4")
+
+[node name="WallCornerBInside" type="MeshInstance3D" parent="." unique_id=591473482]
+mesh = ExtResource("76_donjw")
+
+[node name="WallCornerBOutside" type="MeshInstance3D" parent="." unique_id=1099907628]
+mesh = ExtResource("77_ok7kc")
+
+[node name="WallStraight" type="MeshInstance3D" parent="." unique_id=1575061577]
+mesh = ExtResource("78_hkbas")
+
+[node name="WallStraightGate" type="MeshInstance3D" parent="." unique_id=594846869]
+mesh = ExtResource("79_iyxwx")
+
+[node name="WallStraightGateDoorLeft" type="MeshInstance3D" parent="." unique_id=1634642470]
+mesh = ExtResource("80_fhhj4")
+
+[node name="WallStraightGateDoorRight" type="MeshInstance3D" parent="." unique_id=1752030427]
+mesh = ExtResource("81_k54vr")
+
+[node name="BuildingArcheryrangeRed" type="MeshInstance3D" parent="." unique_id=815379341]
+mesh = ExtResource("82_orb8l")
+
+[node name="BuildingBarracksRed" type="MeshInstance3D" parent="." unique_id=1261234668]
+mesh = ExtResource("83_27s36")
+
+[node name="BuildingBlacksmithRed" type="MeshInstance3D" parent="." unique_id=1994935309]
+mesh = ExtResource("84_wxegf")
+
+[node name="BuildingCastleRed" type="MeshInstance3D" parent="." unique_id=939420008]
+mesh = ExtResource("85_javl5")
+
+[node name="BuildingChurchRed" type="MeshInstance3D" parent="." unique_id=1244992506]
+mesh = ExtResource("86_pbu6g")
+
+[node name="BuildingHomeARed" type="MeshInstance3D" parent="." unique_id=997574795]
+mesh = ExtResource("87_bocl1")
+
+[node name="BuildingHomeBRed" type="MeshInstance3D" parent="." unique_id=490315837]
+mesh = ExtResource("88_6n5kj")
+
+[node name="BuildingLumbermillRed" type="MeshInstance3D" parent="." unique_id=763247956]
+mesh = ExtResource("89_1vguq")
+
+[node name="BuildingLumbermillRedBuildingLumbermillSawRed" type="MeshInstance3D" parent="." unique_id=1128084150]
+mesh = ExtResource("90_gbqd6")
+
+[node name="BuildingLumbermillRedBuildingLumbermillTopRed" type="MeshInstance3D" parent="." unique_id=1079563187]
+mesh = ExtResource("91_krcr3")
+
+[node name="BuildingMarketRed" type="MeshInstance3D" parent="." unique_id=1351465403]
+mesh = ExtResource("92_7boxw")
+
+[node name="BuildingMineRed" type="MeshInstance3D" parent="." unique_id=880693095]
+mesh = ExtResource("93_4risg")
+
+[node name="BuildingTavernRed" type="MeshInstance3D" parent="." unique_id=908590482]
+mesh = ExtResource("94_lr7q1")
+
+[node name="BuildingTowerARed" type="MeshInstance3D" parent="." unique_id=1901593266]
+mesh = ExtResource("95_lhwa3")
+
+[node name="BuildingTowerARedBuildingTowerATopRed" type="MeshInstance3D" parent="." unique_id=13641944]
+mesh = ExtResource("96_yn46v")
+
+[node name="BuildingTowerBaseRed" type="MeshInstance3D" parent="." unique_id=1681902123]
+mesh = ExtResource("97_m2rlr")
+
+[node name="BuildingTowerBRed" type="MeshInstance3D" parent="." unique_id=1920292005]
+mesh = ExtResource("98_02n63")
+
+[node name="BuildingTowerBRedBuildingTowerBTopRed" type="MeshInstance3D" parent="." unique_id=1570184813]
+mesh = ExtResource("99_nw8te")
+
+[node name="BuildingTowerCatapultRed" type="MeshInstance3D" parent="." unique_id=1892738695]
+mesh = ExtResource("100_r3bam")
+
+[node name="BuildingTowerCatapultRedCatapultTurretRed" type="MeshInstance3D" parent="." unique_id=558162501]
+mesh = ExtResource("101_frtw4")
+
+[node name="BuildingTowerCatapultRedCatapultTurretRedCatapultArmRed" type="MeshInstance3D" parent="." unique_id=1676468612]
+mesh = ExtResource("102_2esuj")
+
+[node name="BuildingWatermillRed" type="MeshInstance3D" parent="." unique_id=523751727]
+mesh = ExtResource("103_w6o5q")
+
+[node name="BuildingWatermillRedBuildingWatermillWheelRed" type="MeshInstance3D" parent="." unique_id=1690193038]
+mesh = ExtResource("104_wjddx")
+
+[node name="BuildingWellRed" type="MeshInstance3D" parent="." unique_id=1464212362]
+mesh = ExtResource("105_75j0l")
+
+[node name="BuildingWindmillRed" type="MeshInstance3D" parent="." unique_id=357398633]
+mesh = ExtResource("106_ssskt")
+
+[node name="BuildingWindmillRedBuildingWindmillTopRed" type="MeshInstance3D" parent="." unique_id=1115228192]
+mesh = ExtResource("107_vll4k")
+
+[node name="BuildingWindmillRedBuildingWindmillTopRedBuildingWindmillTopFanRed" type="MeshInstance3D" parent="." unique_id=1345075059]
+mesh = ExtResource("108_bhgvi")
+
+[node name="BuildingArcheryrangeYellow" type="MeshInstance3D" parent="." unique_id=128154919]
+mesh = ExtResource("109_pkh58")
+
+[node name="BuildingBarracksYellow" type="MeshInstance3D" parent="." unique_id=34855936]
+mesh = ExtResource("110_yvxlp")
+
+[node name="BuildingBlacksmithYellow" type="MeshInstance3D" parent="." unique_id=1026383844]
+mesh = ExtResource("111_1vwmb")
+
+[node name="BuildingCastleYellow" type="MeshInstance3D" parent="." unique_id=2043616018]
+mesh = ExtResource("112_g4nin")
+
+[node name="BuildingChurchYellow" type="MeshInstance3D" parent="." unique_id=250015412]
+mesh = ExtResource("113_ule34")
+
+[node name="BuildingHomeAYellow" type="MeshInstance3D" parent="." unique_id=1596094136]
+mesh = ExtResource("114_nn4jl")
+
+[node name="BuildingHomeBYellow" type="MeshInstance3D" parent="." unique_id=2140085118]
+mesh = ExtResource("115_gb1gf")
+
+[node name="BuildingLumbermillYellow" type="MeshInstance3D" parent="." unique_id=233655588]
+mesh = ExtResource("116_ilobl")
+
+[node name="BuildingLumbermillYellowBuildingLumbermillSawYellow" type="MeshInstance3D" parent="." unique_id=1135442157]
+mesh = ExtResource("117_n0xp8")
+
+[node name="BuildingLumbermillYellowBuildingLumbermillTopYellow" type="MeshInstance3D" parent="." unique_id=1377534759]
+mesh = ExtResource("118_0pc22")
+
+[node name="BuildingMarketYellow" type="MeshInstance3D" parent="." unique_id=25772802]
+mesh = ExtResource("119_k0rqs")
+
+[node name="BuildingMineYellow" type="MeshInstance3D" parent="." unique_id=911234525]
+mesh = ExtResource("120_3g3vd")
+
+[node name="BuildingTavernYellow" type="MeshInstance3D" parent="." unique_id=965262684]
+mesh = ExtResource("121_ie21i")
+
+[node name="BuildingTowerAYellow" type="MeshInstance3D" parent="." unique_id=145418557]
+mesh = ExtResource("122_m0r8b")
+
+[node name="BuildingTowerAYellowBuildingTowerATopYellow" type="MeshInstance3D" parent="." unique_id=1751755130]
+mesh = ExtResource("123_0slny")
+
+[node name="BuildingTowerBaseYellow" type="MeshInstance3D" parent="." unique_id=524678575]
+mesh = ExtResource("124_g6rvd")
+
+[node name="BuildingTowerBYellow" type="MeshInstance3D" parent="." unique_id=355527715]
+mesh = ExtResource("125_d80f5")
+
+[node name="BuildingTowerBYellowBuildingTowerBTopYellow" type="MeshInstance3D" parent="." unique_id=90515678]
+mesh = ExtResource("126_5blpt")
+
+[node name="BuildingTowerCatapultYellow" type="MeshInstance3D" parent="." unique_id=521929246]
+mesh = ExtResource("127_ehl6j")
+
+[node name="BuildingTowerCatapultYellowCatapultTurretYellow" type="MeshInstance3D" parent="." unique_id=1047185653]
+mesh = ExtResource("128_vxs36")
+
+[node name="BuildingTowerCatapultYellowCatapultTurretYellowCatapultArmYellow" type="MeshInstance3D" parent="." unique_id=1773017792]
+mesh = ExtResource("129_u6nnn")
+
+[node name="BuildingWatermillYellow" type="MeshInstance3D" parent="." unique_id=1055387686]
+mesh = ExtResource("130_x84a5")
+
+[node name="BuildingWatermillYellowBuildingWatermillWheelYellow" type="MeshInstance3D" parent="." unique_id=882960248]
+mesh = ExtResource("131_0svhr")
+
+[node name="BuildingWellYellow" type="MeshInstance3D" parent="." unique_id=1014755961]
+mesh = ExtResource("132_smawn")
+
+[node name="BuildingWindmillYellow" type="MeshInstance3D" parent="." unique_id=799992918]
+mesh = ExtResource("133_jpo7q")
+
+[node name="BuildingWindmillYellowBuildingWindmillTopYellow" type="MeshInstance3D" parent="." unique_id=840241179]
+mesh = ExtResource("134_501p1")
+
+[node name="BuildingWindmillYellowBuildingWindmillTopYellowBuildingWindmillTopFanYellow" type="MeshInstance3D" parent="." unique_id=265753427]
+mesh = ExtResource("135_160fk")
+
+[node name="CloudBig" type="MeshInstance3D" parent="." unique_id=822313810]
+mesh = ExtResource("136_5shsf")
+
+[node name="CloudSmall" type="MeshInstance3D" parent="." unique_id=851177986]
+mesh = ExtResource("137_3hkqb")
+
+[node name="HillsA" type="MeshInstance3D" parent="." unique_id=417224347]
+mesh = ExtResource("138_hxfxl")
+
+[node name="HillsATrees" type="MeshInstance3D" parent="." unique_id=1911792411]
+mesh = ExtResource("139_omgcj")
+
+[node name="HillsB" type="MeshInstance3D" parent="." unique_id=1688701279]
+mesh = ExtResource("140_fmiy0")
+
+[node name="HillsBTrees" type="MeshInstance3D" parent="." unique_id=1387559848]
+mesh = ExtResource("141_q8skj")
+
+[node name="HillsC" type="MeshInstance3D" parent="." unique_id=5843775]
+mesh = ExtResource("142_2lwmh")
+
+[node name="HillsCTrees" type="MeshInstance3D" parent="." unique_id=534576944]
+mesh = ExtResource("143_lwv0x")
+
+[node name="HillSingleA" type="MeshInstance3D" parent="." unique_id=401774319]
+mesh = ExtResource("144_f4hyr")
+
+[node name="HillSingleB" type="MeshInstance3D" parent="." unique_id=1238083192]
+mesh = ExtResource("145_8nyk5")
+
+[node name="HillSingleC" type="MeshInstance3D" parent="." unique_id=518284481]
+mesh = ExtResource("146_ryi6m")
+
+[node name="MountainA" type="MeshInstance3D" parent="." unique_id=1758193901]
+mesh = ExtResource("147_fxppa")
+
+[node name="MountainAGrass" type="MeshInstance3D" parent="." unique_id=709450184]
+mesh = ExtResource("148_somn8")
+
+[node name="MountainAGrassTrees" type="MeshInstance3D" parent="." unique_id=231504214]
+mesh = ExtResource("149_xmupj")
+
+[node name="MountainB" type="MeshInstance3D" parent="." unique_id=1365903205]
+mesh = ExtResource("150_fcm2e")
+
+[node name="MountainBGrass" type="MeshInstance3D" parent="." unique_id=1642527540]
+mesh = ExtResource("151_nylia")
+
+[node name="MountainBGrassTrees" type="MeshInstance3D" parent="." unique_id=327564207]
+mesh = ExtResource("152_jat1v")
+
+[node name="MountainC" type="MeshInstance3D" parent="." unique_id=182385362]
+mesh = ExtResource("153_l2yss")
+
+[node name="MountainCGrass" type="MeshInstance3D" parent="." unique_id=2128646090]
+mesh = ExtResource("154_pg0un")
+
+[node name="MountainCGrassTrees" type="MeshInstance3D" parent="." unique_id=850858857]
+mesh = ExtResource("155_lspvw")
+
+[node name="RockSingleA" type="MeshInstance3D" parent="." unique_id=555193233]
+mesh = ExtResource("156_rh28f")
+
+[node name="RockSingleB" type="MeshInstance3D" parent="." unique_id=277590882]
+mesh = ExtResource("157_g7l1u")
+
+[node name="RockSingleC" type="MeshInstance3D" parent="." unique_id=1025942343]
+mesh = ExtResource("158_ijcto")
+
+[node name="RockSingleD" type="MeshInstance3D" parent="." unique_id=94337551]
+mesh = ExtResource("159_5yelu")
+
+[node name="RockSingleE" type="MeshInstance3D" parent="." unique_id=1123686137]
+mesh = ExtResource("160_fqgiv")
+
+[node name="TreesACut" type="MeshInstance3D" parent="." unique_id=908290401]
+mesh = ExtResource("161_tntxy")
+
+[node name="TreesALarge" type="MeshInstance3D" parent="." unique_id=285511089]
+mesh = ExtResource("162_08r4q")
+
+[node name="TreesAMedium" type="MeshInstance3D" parent="." unique_id=898473349]
+mesh = ExtResource("163_kc7s8")
+
+[node name="TreesASmall" type="MeshInstance3D" parent="." unique_id=36692708]
+mesh = ExtResource("164_rcvvv")
+
+[node name="TreesBCut" type="MeshInstance3D" parent="." unique_id=2030669317]
+mesh = ExtResource("165_6v2cf")
+
+[node name="TreesBLarge" type="MeshInstance3D" parent="." unique_id=1433699893]
+mesh = ExtResource("166_ro63h")
+
+[node name="TreesBMedium" type="MeshInstance3D" parent="." unique_id=2020345525]
+mesh = ExtResource("167_t0qxs")
+
+[node name="TreesBSmall" type="MeshInstance3D" parent="." unique_id=502430963]
+mesh = ExtResource("168_2o6xp")
+
+[node name="TreeSingleA" type="MeshInstance3D" parent="." unique_id=1014735348]
+mesh = ExtResource("169_fcndm")
+
+[node name="TreeSingleACut" type="MeshInstance3D" parent="." unique_id=1169600199]
+mesh = ExtResource("170_mgk5p")
+
+[node name="TreeSingleB" type="MeshInstance3D" parent="." unique_id=1489272951]
+mesh = ExtResource("171_apapr")
+
+[node name="TreeSingleBCut" type="MeshInstance3D" parent="." unique_id=673476464]
+mesh = ExtResource("172_irnuq")
+
+[node name="WaterlilyA" type="MeshInstance3D" parent="." unique_id=57555686]
+mesh = ExtResource("173_ae2qm")
+
+[node name="WaterlilyB" type="MeshInstance3D" parent="." unique_id=1488613660]
+mesh = ExtResource("174_oq26g")
+
+[node name="WaterplantA" type="MeshInstance3D" parent="." unique_id=1013869378]
+mesh = ExtResource("175_ioxes")
+
+[node name="WaterplantB" type="MeshInstance3D" parent="." unique_id=1405101960]
+mesh = ExtResource("176_gqll3")
+
+[node name="WaterplantC" type="MeshInstance3D" parent="." unique_id=1807372687]
+mesh = ExtResource("177_1qb83")
+
+[node name="Barrel" type="MeshInstance3D" parent="." unique_id=813882331]
+mesh = ExtResource("178_hfver")
+
+[node name="BucketArrows" type="MeshInstance3D" parent="." unique_id=84991617]
+mesh = ExtResource("179_es2ka")
+
+[node name="BucketEmpty" type="MeshInstance3D" parent="." unique_id=2128250323]
+mesh = ExtResource("180_rdgtl")
+
+[node name="BucketWater" type="MeshInstance3D" parent="." unique_id=618815001]
+mesh = ExtResource("181_6xn0n")
+
+[node name="CrateABig" type="MeshInstance3D" parent="." unique_id=1689629915]
+mesh = ExtResource("182_e07g4")
+
+[node name="CrateASmall" type="MeshInstance3D" parent="." unique_id=1363320573]
+mesh = ExtResource("183_uc86d")
+
+[node name="CrateBBig" type="MeshInstance3D" parent="." unique_id=2120090183]
+mesh = ExtResource("184_4m1dg")
+
+[node name="CrateBSmall" type="MeshInstance3D" parent="." unique_id=560831719]
+mesh = ExtResource("185_sl2bb")
+
+[node name="CrateLongA" type="MeshInstance3D" parent="." unique_id=600959829]
+mesh = ExtResource("186_tqy77")
+
+[node name="CrateLongB" type="MeshInstance3D" parent="." unique_id=1046659851]
+mesh = ExtResource("187_sts3q")
+
+[node name="CrateLongC" type="MeshInstance3D" parent="." unique_id=1524197524]
+mesh = ExtResource("188_07vdp")
+
+[node name="CrateLongEmpty" type="MeshInstance3D" parent="." unique_id=304355255]
+mesh = ExtResource("189_ryhsq")
+
+[node name="CrateOpen" type="MeshInstance3D" parent="." unique_id=123392706]
+mesh = ExtResource("190_qmb0h")
+
+[node name="FlagBlue" type="MeshInstance3D" parent="." unique_id=1132506234]
+mesh = ExtResource("191_m211n")
+
+[node name="FlagGreen" type="MeshInstance3D" parent="." unique_id=669840464]
+mesh = ExtResource("192_1y60y")
+
+[node name="FlagRed" type="MeshInstance3D" parent="." unique_id=841357765]
+mesh = ExtResource("193_jkk0o")
+
+[node name="FlagYellow" type="MeshInstance3D" parent="." unique_id=626458855]
+mesh = ExtResource("194_4nvr2")
+
+[node name="Ladder" type="MeshInstance3D" parent="." unique_id=2091330738]
+mesh = ExtResource("195_boeam")
+
+[node name="Pallet" type="MeshInstance3D" parent="." unique_id=677487048]
+mesh = ExtResource("196_gm5e4")
+
+[node name="ResourceLumber" type="MeshInstance3D" parent="." unique_id=22830031]
+mesh = ExtResource("197_ocql4")
+
+[node name="ResourceStone" type="MeshInstance3D" parent="." unique_id=1742315831]
+mesh = ExtResource("198_rul7u")
+
+[node name="Sack" type="MeshInstance3D" parent="." unique_id=980709933]
+mesh = ExtResource("199_tjtyc")
+
+[node name="Target" type="MeshInstance3D" parent="." unique_id=752345961]
+mesh = ExtResource("200_cuflx")
+
+[node name="Tent" type="MeshInstance3D" parent="." unique_id=1321382530]
+mesh = ExtResource("201_yopb1")
+
+[node name="Weaponrack" type="MeshInstance3D" parent="." unique_id=1708242592]
+mesh = ExtResource("202_dp06a")
+
+[node name="Wheelbarrow" type="MeshInstance3D" parent="." unique_id=1025667241]
+mesh = ExtResource("203_8m067")
+
+[node name="HexGrass" type="MeshInstance3D" parent="." unique_id=1878709918]
+mesh = ExtResource("204_sftgg")
+
+[node name="HexGrassBottom" type="MeshInstance3D" parent="." unique_id=1060339071]
+mesh = ExtResource("205_7d0i4")
+
+[node name="HexGrassSlopedHigh" type="MeshInstance3D" parent="." unique_id=1824942164]
+mesh = ExtResource("206_3x78u")
+
+[node name="HexGrassSlopedLow" type="MeshInstance3D" parent="." unique_id=71419416]
+mesh = ExtResource("207_un0qr")
+
+[node name="HexWater" type="MeshInstance3D" parent="." unique_id=1529937013]
+mesh = ExtResource("208_ir7fw")
+
+[node name="HexCoastA" type="MeshInstance3D" parent="." unique_id=1296348986]
+mesh = ExtResource("209_vubw1")
+
+[node name="HexCoastB" type="MeshInstance3D" parent="." unique_id=1530662785]
+mesh = ExtResource("210_t7v3e")
+
+[node name="HexCoastC" type="MeshInstance3D" parent="." unique_id=1933780003]
+mesh = ExtResource("211_bjokl")
+
+[node name="HexCoastD" type="MeshInstance3D" parent="." unique_id=1211561757]
+mesh = ExtResource("212_foowb")
+
+[node name="HexCoastE" type="MeshInstance3D" parent="." unique_id=11020639]
+mesh = ExtResource("213_jxcex")
+
+[node name="HexCoastAWaterless" type="MeshInstance3D" parent="." unique_id=255744717]
+mesh = ExtResource("214_406lq")
+
+[node name="HexCoastBWaterless" type="MeshInstance3D" parent="." unique_id=2051107392]
+mesh = ExtResource("215_kxlpa")
+
+[node name="HexCoastCWaterless" type="MeshInstance3D" parent="." unique_id=1669002601]
+mesh = ExtResource("216_caism")
+
+[node name="HexCoastDWaterless" type="MeshInstance3D" parent="." unique_id=771300647]
+mesh = ExtResource("217_afkah")
+
+[node name="HexCoastEWaterless" type="MeshInstance3D" parent="." unique_id=1475914208]
+mesh = ExtResource("218_kpatw")
+
+[node name="HexRiverA" type="MeshInstance3D" parent="." unique_id=1723161509]
+mesh = ExtResource("219_sslp1")
+
+[node name="HexRiverACurvy" type="MeshInstance3D" parent="." unique_id=1323012937]
+mesh = ExtResource("220_ftiad")
+
+[node name="HexRiverB" type="MeshInstance3D" parent="." unique_id=39564372]
+mesh = ExtResource("221_mil2p")
+
+[node name="HexRiverC" type="MeshInstance3D" parent="." unique_id=534962794]
+mesh = ExtResource("222_4wdmk")
+
+[node name="HexRiverCrossingA" type="MeshInstance3D" parent="." unique_id=144583713]
+mesh = ExtResource("223_nuh2c")
+
+[node name="HexRiverCrossingB" type="MeshInstance3D" parent="." unique_id=1210832066]
+mesh = ExtResource("224_0hlw2")
+
+[node name="HexRiverD" type="MeshInstance3D" parent="." unique_id=1934737560]
+mesh = ExtResource("225_dius0")
+
+[node name="HexRiverE" type="MeshInstance3D" parent="." unique_id=953475180]
+mesh = ExtResource("226_g7p8d")
+
+[node name="HexRiverF" type="MeshInstance3D" parent="." unique_id=632225462]
+mesh = ExtResource("227_5t63i")
+
+[node name="HexRiverG" type="MeshInstance3D" parent="." unique_id=2054748441]
+mesh = ExtResource("228_aqlhq")
+
+[node name="HexRiverH" type="MeshInstance3D" parent="." unique_id=472419297]
+mesh = ExtResource("229_yf18b")
+
+[node name="HexRiverI" type="MeshInstance3D" parent="." unique_id=382640230]
+mesh = ExtResource("230_nx2cn")
+
+[node name="HexRiverJ" type="MeshInstance3D" parent="." unique_id=1435811206]
+mesh = ExtResource("231_ogtiu")
+
+[node name="HexRiverK" type="MeshInstance3D" parent="." unique_id=1850807609]
+mesh = ExtResource("232_lkuhg")
+
+[node name="HexRiverL" type="MeshInstance3D" parent="." unique_id=1678232400]
+mesh = ExtResource("233_wsrnm")
+
+[node name="HexRiverACurvyWaterless" type="MeshInstance3D" parent="." unique_id=36453891]
+mesh = ExtResource("234_0pv0w")
+
+[node name="HexRiverAWaterless" type="MeshInstance3D" parent="." unique_id=592348253]
+mesh = ExtResource("235_5uxq8")
+
+[node name="HexRiverBWaterless" type="MeshInstance3D" parent="." unique_id=2113647061]
+mesh = ExtResource("236_srm0p")
+
+[node name="HexRiverCrossingAWaterless" type="MeshInstance3D" parent="." unique_id=1714714461]
+mesh = ExtResource("237_e2mma")
+
+[node name="HexRiverCrossingBWaterless" type="MeshInstance3D" parent="." unique_id=131347545]
+mesh = ExtResource("238_0u48a")
+
+[node name="HexRiverCWaterless" type="MeshInstance3D" parent="." unique_id=15428756]
+mesh = ExtResource("239_yj5qt")
+
+[node name="HexRiverDWaterless" type="MeshInstance3D" parent="." unique_id=1332209488]
+mesh = ExtResource("240_rdnvx")
+
+[node name="HexRiverEWaterless" type="MeshInstance3D" parent="." unique_id=2006547193]
+mesh = ExtResource("241_81blq")
+
+[node name="HexRiverFWaterless" type="MeshInstance3D" parent="." unique_id=1843898678]
+mesh = ExtResource("242_1umns")
+
+[node name="HexRiverGWaterless" type="MeshInstance3D" parent="." unique_id=1795399326]
+mesh = ExtResource("243_b8rq0")
+
+[node name="HexRiverHWaterless" type="MeshInstance3D" parent="." unique_id=234151109]
+mesh = ExtResource("244_k6kf7")
+
+[node name="HexRiverIWaterless" type="MeshInstance3D" parent="." unique_id=2144098346]
+mesh = ExtResource("245_bx3gu")
+
+[node name="HexRiverJWaterless" type="MeshInstance3D" parent="." unique_id=1392213791]
+mesh = ExtResource("246_p6nfn")
+
+[node name="HexRiverKWaterless" type="MeshInstance3D" parent="." unique_id=635218191]
+mesh = ExtResource("247_51iwh")
+
+[node name="HexRiverLWaterless" type="MeshInstance3D" parent="." unique_id=1432675916]
+mesh = ExtResource("248_o6dyk")
+
+[node name="HexRoadA" type="MeshInstance3D" parent="." unique_id=11712471]
+mesh = ExtResource("249_p5v5m")
+
+[node name="HexRoadASlopedHigh" type="MeshInstance3D" parent="." unique_id=165548945]
+mesh = ExtResource("250_pb388")
+
+[node name="HexRoadASlopedLow" type="MeshInstance3D" parent="." unique_id=425038688]
+mesh = ExtResource("251_bn0jy")
+
+[node name="HexRoadB" type="MeshInstance3D" parent="." unique_id=2058122707]
+mesh = ExtResource("252_1ang7")
+
+[node name="HexRoadC" type="MeshInstance3D" parent="." unique_id=1423263524]
+mesh = ExtResource("253_biydt")
+
+[node name="HexRoadD" type="MeshInstance3D" parent="." unique_id=1559381127]
+mesh = ExtResource("254_ybbw1")
+
+[node name="HexRoadE" type="MeshInstance3D" parent="." unique_id=1122151337]
+mesh = ExtResource("255_w6rkk")
+
+[node name="HexRoadF" type="MeshInstance3D" parent="." unique_id=1292808212]
+mesh = ExtResource("256_g8ql6")
+
+[node name="HexRoadG" type="MeshInstance3D" parent="." unique_id=1474237535]
+mesh = ExtResource("257_expra")
+
+[node name="HexRoadH" type="MeshInstance3D" parent="." unique_id=1293581276]
+mesh = ExtResource("258_8ksm5")
+
+[node name="HexRoadI" type="MeshInstance3D" parent="." unique_id=910654517]
+mesh = ExtResource("259_teynb")
+
+[node name="HexRoadJ" type="MeshInstance3D" parent="." unique_id=1643444837]
+mesh = ExtResource("260_nmyjv")
+
+[node name="HexRoadK" type="MeshInstance3D" parent="." unique_id=1880292353]
+mesh = ExtResource("261_kgshh")
+
+[node name="HexRoadL" type="MeshInstance3D" parent="." unique_id=1859756934]
+mesh = ExtResource("262_sjwhi")
+
+[node name="HexRoadM" type="MeshInstance3D" parent="." unique_id=1625071766]
+mesh = ExtResource("263_je3oy")

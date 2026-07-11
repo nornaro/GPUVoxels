@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_B.tres" id="1_rvgrq"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_ns7d3"]
+points = PackedVector3Array(-0.060251035, 0, -0.128003, -0.141977, 0, 0.013740391, -0.07764551, 0.134585, 0.003472671, -0.030960992, 0.134585, -0.077495605, 0.043330237, 0.134585, -0.06757015, 0.069842786, 0, -0.11062122, -0.09896776, 0, 0.121722564, -0.06858355, 0.056819215, 0.083903134, 0.052195802, 0.134585, 0.06515232, 0.086058915, 0.134585, -0.0071372986, 0.144639, 0, -0.004814841, 0.08535753, 0, 0.121722564)
+
+[node name="rock_single_B" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_rvgrq")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_ns7d3")

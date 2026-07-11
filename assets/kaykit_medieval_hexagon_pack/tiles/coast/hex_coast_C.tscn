@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/tiles/coast/hex_coast_C.tres" id="1_5d7bc"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_oi81c"]
+points = PackedVector3Array(1, -1, 0.57735, 0.99980426, -0.20007831, 0.577124, 0, -0.20007831, 1.154474, 0, -1, 1.1547, 1, -1, -0.57735, 0.99980426, -0.20007831, -0.57735, 0.7163273, -0.100039124, -0.74124146, 0.4283477, 0, -0.8497489, 0.3191073, 0, -0.65149677, -1, -0.100039124, 0.24979317, -1, -0.20007831, 0.577124, 0.07556772, 0, -0.51156735, -0.7462803, 0, -0.16004848, -0.9500783, 0, -0.0779897, -1, -1, 0.57735, 0, -1, -1.1547, 0, -0.050019562, -1.1547, 0.49980426, -0.050019562, -0.86602503, 0, 0, -1.0970554, -1, -0.050019562, 0, -0.9500783, 0, -0.5486407, -1, -1, -0.57735, -1, -0.050019562, -0.57735, -0.4727878, 0, -0.82420444)
+
+[node name="hex_coast_C" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_5d7bc")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_oi81c")

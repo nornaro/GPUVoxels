@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/tiles/base/hex_grass_sloped_high.tres" id="1_wlkym"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_13uto"]
+points = PackedVector3Array(1, 0.9465544, 0.57735, 0.9498825, 1, 0.55022323, 0, 1, 1.0988641, 0, 0.9463587, 1.1547, 1, -1, 0.57735, 1, 0.9465544, -0.57735, 0.9498825, 1, -0.5504492, 0, 1, -1.09909, -0.96476114, 0.035238862, 0.54185903, 0, -1, 1.1547, -1, -0.054032862, 0.57735, 1, -1, -0.57735, 0, 0.9463587, -1.1547, -0.96476114, 0.035238862, -0.5420851, -1, -1, 0.57735, -1, -0.054032862, -0.57735, 0, -1, -1.1547, -1, -1, -0.57735)
+
+[node name="hex_grass_sloped_high" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_wlkym")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_13uto")

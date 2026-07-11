@@ -1,6 +1,7 @@
 extends Node3D
 
 const HEX_SIZE := 1.0
+const SAVE_PATH := "user://placed_blocks.json"
 
 var env: Environment
 var camera: Camera3D
@@ -8,7 +9,6 @@ var camera_pivot: Node3D
 var grid: HexGridManager
 var info_label: Label
 var coord_label: Label
-var terrain_gen: HexTerrainGenerator
 
 var cam_rot_x: float = 65.0
 var cam_rot_y: float = 45.0
@@ -34,22 +34,76 @@ var sand_id: int
 const CAM_MOVE_SPEED := 30.0
 const CAM_FAST_SPEED := 60.0
 
-# Noise seeds for compute shader
+# Noise seeds
 var _noise_seed: float
 var _normal_map_tex: ImageTexture
 var _detail_noise_tex: ImageTexture
 
+# Block placement
+var block_lib: HexBlockLib = null
+var placement_mode := false
+var delete_mode := false
+var _placed_blocks: Dictionary = {}  # coords -> {rid, item_name, rotation}
+var _last_left_click_time := 0.0
+const DOUBLE_CLICK_THRESHOLD := 0.3
+var _selected_item_name: String = ""
+var _selected_category: String = ""
+var _place_rotation: float = 0.0
+
+# Loading screen
+var _loading_canvas: CanvasLayer = null
+var _loading_label: Label = null
+var _status_label: Label = null
+
+# Ghost preview
+var _ghost_inst: RID = RID()
+var _ghost_mesh_name: String = ""
+var _ghost_mat: StandardMaterial3D = null
+
+# Building menu
+var _menu_panel: PanelContainer = null
+var _menu_visible := false
+var _category_container: HBoxContainer = null
+var _item_container: VBoxContainer = null
+var _item_scroll: ScrollContainer = null
+var _delete_btn: Button = null
+
 
 func _ready() -> void:
+	_show_loading_screen("Initializing...")
+	call_deferred("_init_phase_1")
+
+
+func _init_phase_1() -> void:
+	_update_loading("Generating textures...")
 	_noise_seed = randf() * 1000.0
-	terrain_gen = HexTerrainGenerator.new()
+	block_lib = HexBlockLib.new()
 	_generate_normal_map()
+	block_lib.set_textures(_normal_map_tex, _detail_noise_tex)
+	call_deferred("_init_phase_2")
+
+
+func _init_phase_2() -> void:
+	_update_loading("Setting up world...")
 	_setup_environment()
 	_setup_camera()
 	_setup_lighting()
+	call_deferred("_init_phase_3")
+
+
+func _init_phase_3() -> void:
+	_update_loading("Building terrain...")
 	_setup_grid()
+	call_deferred("_init_phase_4")
+
+
+func _init_phase_4() -> void:
+	_update_loading("Finalizing...")
 	_setup_ui()
 	_setup_outline()
+	_setup_ghost()
+	_select_first_item()
+	_hide_loading_screen()
 
 
 func _process(delta: float) -> void:
@@ -57,10 +111,27 @@ func _process(delta: float) -> void:
 	if _needs_redraw:
 		_update_camera()
 		_needs_redraw = false
-	coord_label.text = "Tiles: %d | R=regen F=flat G=grid | WASD=move RMB=rot MMB=pan Scroll=zoom" % grid.get_tile_count()
+	var mode_str := ""
+	if delete_mode:
+		mode_str = " [DELETE]"
+	elif placement_mode:
+		mode_str = " [%s]" % _selected_item_name if _selected_item_name != "" else " [Place]"
+	coord_label.text = "Tiles: %d | R=regen F=flat G=grid B=build%s | WASD RMB MMB Scroll" % [
+		grid.get_tile_count(), mode_str,
+	]
+	if _status_label and _status_label.modulate.a > 0.0:
+		_status_label.modulate.a = maxf(0.0, _status_label.modulate.a - delta * 0.3)
 
 
 func _exit_tree() -> void:
+	for coords in _placed_blocks:
+		var entry: Dictionary = _placed_blocks[coords]
+		var inst: RID = entry["rid"]
+		if inst.is_valid():
+			RenderingServer.free_rid(inst)
+	_placed_blocks.clear()
+	if _ghost_inst.is_valid():
+		RenderingServer.free_rid(_ghost_inst)
 	if _outline_inst_rid.is_valid():
 		RenderingServer.free_rid(_outline_inst_rid)
 	if _outline_mesh_rid.is_valid():
@@ -131,9 +202,13 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 		hovered_coords = cell.coords
 		_update_outline(cell)
 		_update_info_label(cell)
+		if placement_mode or delete_mode:
+			_update_ghost(cell)
 	elif cell == null:
 		hovered_coords = Vector3i.ZERO
 		RenderingServer.instance_set_visible(_outline_inst_rid, false)
+		if placement_mode or delete_mode:
+			RenderingServer.instance_set_visible(_ghost_inst, false)
 
 
 func _handle_click(event: InputEventMouseButton) -> void:
@@ -148,9 +223,12 @@ func _handle_click(event: InputEventMouseButton) -> void:
 			cam_zoom = clampf(cam_zoom + 2.0, 5.0, 80.0)
 			_needs_redraw = true
 		MOUSE_BUTTON_LEFT:
-			_place_at_cursor()
-		MOUSE_BUTTON_RIGHT:
-			pass
+			if placement_mode:
+				_handle_block_place(event)
+			elif delete_mode:
+				_handle_block_delete(event)
+			else:
+				_place_at_cursor()
 
 
 func _handle_key(event: InputEventKey) -> void:
@@ -159,11 +237,23 @@ func _handle_key(event: InputEventKey) -> void:
 	match event.keycode:
 		KEY_R:
 			_noise_seed = randf() * 1000.0
+			grid.noise_seed = _noise_seed
+			_clear_all_placed_blocks()
 			grid.clear_grid()
 		KEY_F:
 			grid.set_flat_mode(not grid.flat_mode)
 		KEY_G:
 			_toggle_grid_lines()
+		KEY_B:
+			_toggle_build_menu()
+		KEY_DELETE:
+			_clear_all_placed_blocks()
+		KEY_S:
+			if event.ctrl_pressed:
+				_save_placed_blocks()
+		KEY_O:
+			if event.ctrl_pressed:
+				_load_placed_blocks()
 
 
 func _place_at_cursor() -> void:
@@ -179,6 +269,382 @@ func _place_at_cursor() -> void:
 			grid.place_tile(n, mesh_id, elevation)
 
 
+# ============================================================================
+# BLOCK PLACEMENT / DELETION
+# ============================================================================
+
+func _handle_block_place(_event: InputEventMouseButton) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _last_left_click_time > DOUBLE_CLICK_THRESHOLD:
+		_last_left_click_time = now
+		return
+	_last_left_click_time = now
+	var mouse_pos := get_viewport().get_mouse_position()
+	var cell := grid.raycast_hex(camera, mouse_pos)
+	if cell == null:
+		return
+	_place_block(cell)
+
+
+func _handle_block_delete(_event: InputEventMouseButton) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _last_left_click_time > DOUBLE_CLICK_THRESHOLD:
+		_last_left_click_time = now
+		return
+	_last_left_click_time = now
+	var mouse_pos := get_viewport().get_mouse_position()
+	var cell := grid.raycast_hex(camera, mouse_pos)
+	if cell == null:
+		return
+	_delete_block(cell)
+
+
+func _place_block(cell: HexCellData) -> void:
+	if _selected_item_name == "" or not block_lib.get_item(_selected_item_name):
+		return
+
+	if _placed_blocks.has(cell.coords):
+		return
+
+	var item: Dictionary = block_lib.get_item(_selected_item_name)
+	var world_pos := HexGridMath.cube_to_world_flat_top(cell.coords, HEX_SIZE)
+
+	var inst := RenderingServer.instance_create()
+	RenderingServer.instance_set_scenario(inst, get_world_3d().scenario)
+	RenderingServer.instance_set_base(inst, item["mesh_rid"])
+	RenderingServer.instance_set_surface_override_material(inst, 0, block_lib.get_material().get_rid())
+
+	var y := cell.elevation if not grid.flat_mode else 0.0
+	var rot_basis := Basis(Vector3.UP, _place_rotation)
+	RenderingServer.instance_set_transform(inst, Transform3D(rot_basis, Vector3(world_pos.x, y, world_pos.z)))
+
+	_placed_blocks[cell.coords] = {"rid": inst, "item_name": _selected_item_name, "rotation": _place_rotation}
+
+
+func _delete_block(cell: HexCellData) -> void:
+	if not _placed_blocks.has(cell.coords):
+		return
+	var entry: Dictionary = _placed_blocks[cell.coords]
+	var inst: RID = entry["rid"]
+	if inst.is_valid():
+		RenderingServer.free_rid(inst)
+	_placed_blocks.erase(cell.coords)
+
+
+func _clear_all_placed_blocks() -> void:
+	for coords in _placed_blocks:
+		var entry: Dictionary = _placed_blocks[coords]
+		var inst: RID = entry["rid"]
+		if inst.is_valid():
+			RenderingServer.free_rid(inst)
+	_placed_blocks.clear()
+
+
+# ============================================================================
+# GHOST PREVIEW
+# ============================================================================
+
+func _setup_ghost() -> void:
+	_ghost_inst = RenderingServer.instance_create()
+	RenderingServer.instance_set_scenario(_ghost_inst, get_world_3d().scenario)
+	_ghost_mat = StandardMaterial3D.new()
+	_ghost_mat.albedo_color = Color(0.4, 0.8, 0.4, 0.35)
+	_ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ghost_mat.no_depth_test = true
+	_ghost_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	RenderingServer.instance_set_visible(_ghost_inst, false)
+
+
+func _update_ghost(cell: HexCellData) -> void:
+	if delete_mode:
+		_ghost_mat.albedo_color = Color(0.9, 0.2, 0.2, 0.35)
+	elif placement_mode:
+		_ghost_mat.albedo_color = Color(0.4, 0.8, 0.4, 0.35)
+
+	var want_name := ""
+	if placement_mode and _selected_item_name != "":
+		want_name = _selected_item_name
+
+	if want_name != _ghost_mesh_name:
+		if want_name != "" and block_lib.get_item(want_name):
+			var item: Dictionary = block_lib.get_item(want_name)
+			RenderingServer.instance_set_base(_ghost_inst, item["mesh_rid"])
+			RenderingServer.instance_set_surface_override_material(_ghost_inst, 0, _ghost_mat.get_rid())
+		_ghost_mesh_name = want_name
+
+	var world_pos := HexGridMath.cube_to_world_flat_top(cell.coords, HEX_SIZE)
+	var y := cell.elevation if not grid.flat_mode else 0.0
+	var rot_basis := Basis(Vector3.UP, _place_rotation)
+	RenderingServer.instance_set_transform(_ghost_inst, Transform3D(rot_basis, Vector3(world_pos.x, y, world_pos.z)))
+	RenderingServer.instance_set_visible(_ghost_inst, true)
+
+
+func _update_ghost_visibility() -> void:
+	if placement_mode or delete_mode:
+		var cell := grid.raycast_hex(camera, get_viewport().get_mouse_position())
+		if cell:
+			_update_ghost(cell)
+	else:
+		RenderingServer.instance_set_visible(_ghost_inst, false)
+
+
+# ============================================================================
+# BUILDING MENU
+# ============================================================================
+
+func _toggle_build_menu() -> void:
+	_menu_visible = not _menu_visible
+	if _menu_panel:
+		_menu_panel.visible = _menu_visible
+	if not _menu_visible and not placement_mode:
+		delete_mode = false
+		_update_ghost_visibility()
+
+
+func _select_first_item() -> void:
+	if block_lib.get_category_count() > 0:
+		var first_cat: String = block_lib.category_names[0]
+		_select_category(first_cat)
+
+
+func _select_category(category: String) -> void:
+	_selected_category = category
+	_rebuild_item_list()
+	_update_category_buttons()
+
+
+func _select_item(item_name: String) -> void:
+	_selected_item_name = item_name
+	placement_mode = true
+	delete_mode = false
+	_update_place_button()
+	_update_ghost_visibility()
+	_update_item_buttons()
+
+
+func _toggle_delete_mode() -> void:
+	delete_mode = not delete_mode
+	if delete_mode:
+		placement_mode = false
+		_selected_item_name = ""
+	else:
+		pass
+	_update_place_button()
+	_update_ghost_visibility()
+	_update_delete_button()
+	_update_item_buttons()
+
+
+func _update_category_buttons() -> void:
+	if _category_container == null:
+		return
+	for child in _category_container.get_children():
+		if child is Button:
+			child.modulate = Color(1, 1, 1) if child.text == _selected_category else Color(0.6, 0.6, 0.6)
+
+
+func _update_item_buttons() -> void:
+	if _item_container == null:
+		return
+	for child in _item_container.get_children():
+		if child is Button:
+			if delete_mode:
+				child.modulate = Color(1.0, 0.6, 0.6)
+			elif child.text == _selected_item_name:
+				child.modulate = Color(0.5, 1.0, 0.5)
+			else:
+				child.modulate = Color(1, 1, 1)
+
+
+func _rebuild_item_list() -> void:
+	if _item_container == null:
+		return
+	for child in _item_container.get_children():
+		child.queue_free()
+
+	var items: Array = block_lib.get_items(_selected_category)
+	for item_entry in items:
+		# Find the name for this entry
+		var item_name := ""
+		for n in block_lib.get_all_item_names():
+			if block_lib.get_item(n) == item_entry:
+				item_name = n
+				break
+		if item_name == "":
+			continue
+		var btn := Button.new()
+		btn.text = item_name
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.custom_minimum_size.y = 28
+		var captured_name := item_name
+		btn.pressed.connect(func() -> void: _select_item(captured_name))
+		_item_container.add_child(btn)
+	_update_item_buttons()
+
+
+func _update_place_button() -> void:
+	var btn := get_node_or_null("UI/ControlsPanel/Controls/PlaceModeBtn") as Button
+	if btn:
+		btn.button_pressed = placement_mode
+
+
+func _update_delete_button() -> void:
+	if _delete_btn:
+		_delete_btn.button_pressed = delete_mode
+
+
+func _on_placement_toggled(pressed: bool) -> void:
+	if pressed:
+		placement_mode = true
+		delete_mode = false
+	else:
+		placement_mode = false
+		_selected_item_name = ""
+	_update_ghost_visibility()
+	_update_item_buttons()
+
+
+func _on_category_pressed(category: String) -> void:
+	_select_category(category)
+
+
+# ============================================================================
+# SAVE / LOAD
+# ============================================================================
+
+func _save_placed_blocks() -> void:
+	var blocks: Array[Dictionary] = []
+	for coords in _placed_blocks:
+		var entry: Dictionary = _placed_blocks[coords]
+		blocks.append({
+			"q": coords.x, "r": coords.y, "s": coords.z,
+			"item_name": entry["item_name"],
+			"rotation": entry["rotation"],
+		})
+	var save_data: Dictionary = {
+		"noise_seed": _noise_seed,
+		"noise_freq": grid.noise_freq,
+		"blocks": blocks,
+	}
+	var json_text := JSON.stringify(save_data, "\t")
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f == null:
+		_show_status("FAILED to save!")
+		return
+	f.store_string(json_text)
+	f.close()
+	_show_status("Saved %d blocks" % blocks.size())
+
+
+func _load_placed_blocks() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		_show_status("No save file found")
+		return
+	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if f == null:
+		_show_status("FAILED to open save file")
+		return
+	var json_text := f.get_as_text()
+	f.close()
+	var parsed = JSON.parse_string(json_text)
+	if parsed == null:
+		_show_status("Invalid save file")
+		return
+
+	var blocks: Array = []
+	if parsed is Dictionary:
+		if parsed.has("noise_seed"):
+			_noise_seed = float(parsed["noise_seed"])
+			grid.noise_seed = _noise_seed
+		if parsed.has("noise_freq"):
+			grid.noise_freq = float(parsed["noise_freq"])
+		# Regenerate terrain with loaded seed
+		_clear_all_placed_blocks()
+		grid.clear_grid()
+		blocks = parsed.get("blocks", [])
+	elif parsed is Array:
+		blocks = parsed
+	else:
+		_show_status("Invalid save file")
+		return
+
+	var loaded := 0
+	for entry in blocks:
+		var coords := Vector3i(int(entry["q"]), int(entry["r"]), int(entry["s"]))
+		var item_name: String = entry.get("item_name", "")
+		var rot_y: float = entry["rotation"]
+		if _placed_blocks.has(coords):
+			continue
+		if item_name == "" or not block_lib.get_item(item_name):
+			# Fallback: try mesh_idx for old saves
+			var mesh_idx: int = int(entry.get("mesh_idx", 0))
+			var proc_items := block_lib.get_items("Blocks")
+			if mesh_idx >= 0 and mesh_idx < proc_items.size():
+				item_name = block_lib.get_all_item_names()[mesh_idx]
+			else:
+				continue
+		var item: Dictionary = block_lib.get_item(item_name)
+		var world_pos := HexGridMath.cube_to_world_flat_top(coords, HEX_SIZE)
+		var cell := grid.get_cell(coords)
+		var y := 0.0
+		if cell != null:
+			y = cell.elevation if not grid.flat_mode else 0.0
+		var inst := RenderingServer.instance_create()
+		RenderingServer.instance_set_scenario(inst, get_world_3d().scenario)
+		RenderingServer.instance_set_base(inst, item["mesh_rid"])
+		RenderingServer.instance_set_surface_override_material(inst, 0, block_lib.get_material().get_rid())
+		var rot_basis := Basis(Vector3.UP, rot_y)
+		RenderingServer.instance_set_transform(inst, Transform3D(rot_basis, Vector3(world_pos.x, y, world_pos.z)))
+		_placed_blocks[coords] = {"rid": inst, "item_name": item_name, "rotation": rot_y}
+		loaded += 1
+	_show_status("Loaded %d blocks" % loaded)
+
+
+# ============================================================================
+# LOADING SCREEN
+# ============================================================================
+
+func _show_loading_screen(msg: String) -> void:
+	_loading_canvas = CanvasLayer.new()
+	_loading_canvas.layer = 100
+	add_child(_loading_canvas)
+	var bg := ColorRect.new()
+	bg.color = Color(0.08, 0.1, 0.15)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_loading_canvas.add_child(bg)
+	_loading_label = Label.new()
+	_loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_loading_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_loading_label.add_theme_font_size_override("font_size", 32)
+	_loading_label.add_theme_color_override("font_color", Color.WHITE)
+	_loading_label.text = msg
+	_loading_canvas.add_child(_loading_label)
+
+
+func _update_loading(msg: String) -> void:
+	if _loading_label:
+		_loading_label.text = msg
+
+
+func _hide_loading_screen() -> void:
+	if _loading_canvas:
+		_loading_canvas.queue_free()
+		_loading_canvas = null
+		_loading_label = null
+
+
+func _show_status(msg: String) -> void:
+	if _status_label:
+		_status_label.text = msg
+		_status_label.modulate.a = 1.0
+
+
+# ============================================================================
+# CAMERA
+# ============================================================================
+
 func _update_camera() -> void:
 	var rad_x := deg_to_rad(cam_rot_x)
 	var rad_y := deg_to_rad(cam_rot_y)
@@ -192,32 +658,6 @@ func _update_camera() -> void:
 	camera.look_at(camera_pivot.global_position)
 
 
-func _generate_chunk_terrain(chunk_coords: Vector2i) -> void:
-	var type_to_mesh := [grass_id, water_id, stone_id, dirt_id, sand_id]
-
-	var q_min := chunk_coords.x * grid.chunk_size
-	var q_max := (chunk_coords.x + 1) * grid.chunk_size - 1
-	var r_min := chunk_coords.y * grid.chunk_size
-	var r_max := (chunk_coords.y + 1) * grid.chunk_size - 1
-
-	var cells: Array[Vector3i] = []
-	for q in range(q_min, q_max + 1):
-		for r in range(r_min, r_max + 1):
-			cells.append(Vector3i(q, r, -q - r))
-
-	if cells.is_empty():
-		return
-
-	var results := terrain_gen.generate_terrain(cells, _noise_seed, 0.15)
-
-	for result in results:
-		var idx: int = result["type_index"]
-		if idx < 0 or idx >= type_to_mesh.size():
-			idx = 0
-		var mesh_id: int = type_to_mesh[idx]
-		grid.place_tile(result["coords"], mesh_id, result["elevation"])
-
-
 func _update_outline(cell: HexCellData) -> void:
 	var world_pos := HexGridMath.cube_to_world_flat_top(cell.coords, HEX_SIZE)
 	var y := cell.elevation if not grid.flat_mode else 0.0
@@ -229,21 +669,24 @@ func _update_outline(cell: HexCellData) -> void:
 
 func _update_info_label(cell: HexCellData) -> void:
 	var v4 := cell.to_vector4()
-	var dist := HexGridMath.cube_distance(Vector3i.ZERO, cell.coords)
 	var tile_names := ["grass", "water", "stone", "dirt", "sand"]
 	var tname := "unknown"
 	if cell.mesh_id >= 0 and cell.mesh_id < tile_names.size():
 		tname = tile_names[cell.mesh_id]
-	info_label.text = "Vec4(%.0f, %.0f, %.0f, %.2f) | Dist from center: %d | %s %s" % [
+	var placed := ""
+	if _placed_blocks.has(cell.coords):
+		var entry: Dictionary = _placed_blocks[cell.coords]
+		placed = " | Built: %s" % entry.get("item_name", "?")
+	info_label.text = "Vec4(%.0f, %.0f, %.0f, %.2f) | Dist: %d | %s %s%s" % [
 		v4.x, v4.y, v4.z, v4.w,
-		dist,
+		cell.distance_from_center,
 		tname,
 		"[FLAT]" if grid.flat_mode else "",
+		placed,
 	]
 
 
 func _generate_normal_map() -> void:
-	# Generate a tiled normal map texture from noise
 	var size := 256
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var noise := FastNoiseLite.new()
@@ -266,12 +709,10 @@ func _generate_normal_map() -> void:
 			nx /= nrm
 			ny /= nrm
 			nz /= nrm
-			# Pack to 0-1 range
 			img.set_pixel(x, y, Color(nx * 0.5 + 0.5, ny * 0.5 + 0.5, nz * 0.5 + 0.5, 1.0))
 
 	_normal_map_tex = ImageTexture.create_from_image(img)
 
-	# Generate detail noise texture
 	var detail_img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var dnoise := FastNoiseLite.new()
 	dnoise.seed = 137
@@ -310,6 +751,10 @@ func _toggle_grid_lines() -> void:
 			st.add_vertex(b)
 	immediate.mesh = st.commit()
 
+
+# ============================================================================
+# ENVIRONMENT / CAMERA / LIGHTING / GRID
+# ============================================================================
 
 func _setup_environment() -> void:
 	env = Environment.new()
@@ -360,7 +805,6 @@ func _setup_lighting() -> void:
 func _setup_grid() -> void:
 	var library := HexTileLibrary.new()
 
-	# Create materials with the shared shader but different params
 	var top_green := HexGridMesh.create_top_face(HEX_SIZE)
 	var prism_green := HexGridMesh.create_full_prism(HEX_SIZE, 1.0)
 	var mat_green := ShaderMaterial.new()
@@ -413,14 +857,20 @@ func _setup_grid() -> void:
 	grid.flat_mode = false
 	grid.tile_library = library
 	grid.camera = camera
-	grid.chunk_generate_callback = _generate_chunk_terrain
+	grid.noise_seed = _noise_seed
+	grid.noise_freq = 0.15
 	add_child(grid)
+	grid.type_mapping = [grass_id, water_id, stone_id, dirt_id, sand_id]
 
 
 func _set_shared_shader_params(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("normal_map", _normal_map_tex)
 	mat.set_shader_parameter("detail_noise", _detail_noise_tex)
 
+
+# ============================================================================
+# UI SETUP
+# ============================================================================
 
 func _setup_ui() -> void:
 	var canvas := CanvasLayer.new()
@@ -438,6 +888,17 @@ func _setup_ui() -> void:
 	info_label.text = "Hovering: ---"
 	canvas.add_child(info_label)
 
+	_status_label = Label.new()
+	_status_label.name = "StatusLabel"
+	_status_label.position = Vector2(16, 68)
+	_status_label.add_theme_font_size_override("font_size", 14)
+	_status_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.4))
+	_status_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_status_label.add_theme_constant_override("shadow_offset_x", 1)
+	_status_label.add_theme_constant_override("shadow_offset_y", 1)
+	_status_label.text = ""
+	canvas.add_child(_status_label)
+
 	coord_label = Label.new()
 	coord_label.name = "CoordLabel"
 	coord_label.position = Vector2(16, 44)
@@ -446,7 +907,11 @@ func _setup_ui() -> void:
 	coord_label.text = "Loading..."
 	canvas.add_child(coord_label)
 
-	# Controls panel at bottom
+	_setup_bottom_bar(canvas)
+	_setup_build_menu(canvas)
+
+
+func _setup_bottom_bar(canvas: CanvasLayer) -> void:
 	var panel := PanelContainer.new()
 	panel.name = "ControlsPanel"
 	panel.anchor_left = 0.0
@@ -486,32 +951,131 @@ func _setup_ui() -> void:
 	hbox.add_child(regen_btn)
 
 	var budget_label := Label.new()
-	budget_label.text = "Per Frame:"
+	budget_label.text = "Tiles/Frame:"
 	budget_label.add_theme_font_size_override("font_size", 14)
 	hbox.add_child(budget_label)
 
 	var budget_spin := SpinBox.new()
 	budget_spin.name = "BudgetSpin"
-	budget_spin.min_value = 1
-	budget_spin.max_value = 16
-	budget_spin.step = 1
-	budget_spin.value = grid.chunks_per_frame
+	budget_spin.min_value = 64
+	budget_spin.max_value = 8192
+	budget_spin.step = 64
+	budget_spin.value = grid.tiles_per_frame
 	budget_spin.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	budget_spin.custom_minimum_size.x = 60
-	budget_spin.value_changed.connect(func(v: float) -> void: grid.chunks_per_frame = int(v))
+	budget_spin.custom_minimum_size.x = 80
+	budget_spin.value_changed.connect(func(v: float) -> void: grid.tiles_per_frame = int(v))
 	hbox.add_child(budget_spin)
+
+	var sep := VSeparator.new()
+	hbox.add_child(sep)
+
+	var build_btn := Button.new()
+	build_btn.text = "Build (B)"
+	build_btn.pressed.connect(_toggle_build_menu)
+	hbox.add_child(build_btn)
+
+	var save_btn := Button.new()
+	save_btn.text = "Save (Ctrl+S)"
+	save_btn.pressed.connect(_save_placed_blocks)
+	hbox.add_child(save_btn)
+
+	var load_btn := Button.new()
+	load_btn.text = "Load (Ctrl+O)"
+	load_btn.pressed.connect(_load_placed_blocks)
+	hbox.add_child(load_btn)
+
+
+func _setup_build_menu(canvas: CanvasLayer) -> void:
+	_menu_panel = PanelContainer.new()
+	_menu_panel.name = "BuildMenu"
+	_menu_panel.anchor_left = 1.0
+	_menu_panel.anchor_top = 0.3
+	_menu_panel.anchor_right = 1.0
+	_menu_panel.anchor_bottom = 0.9
+	_menu_panel.offset_left = -220.0
+	_menu_panel.offset_top = 0.0
+	_menu_panel.offset_right = 0.0
+	_menu_panel.offset_bottom = 0.0
+	_menu_panel.custom_minimum_size = Vector2(220, 0)
+	_menu_panel.visible = false
+	canvas.add_child(_menu_panel)
+
+	var outer_vbox := VBoxContainer.new()
+	outer_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer_vbox.add_theme_constant_override("separation", 4)
+	_menu_panel.add_child(outer_vbox)
+
+	# Title
+	var title := Label.new()
+	title.text = "BUILD"
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+	outer_vbox.add_child(title)
+
+	# Category tabs (horizontal scroll)
+	var cat_scroll := HScrollBar.new()
+	cat_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_category_container = HBoxContainer.new()
+	_category_container.add_theme_constant_override("separation", 4)
+	# Wrap in a container that shows categories
+	var cat_bar := HBoxContainer.new()
+	cat_bar.name = "CategoryBar"
+	cat_bar.add_theme_constant_override("separation", 4)
+	cat_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer_vbox.add_child(cat_bar)
+
+	# Delete button (top row)
+	_delete_btn = Button.new()
+	_delete_btn.name = "DeleteBtn"
+	_delete_btn.text = "DEL"
+	_delete_btn.toggle_mode = true
+	_delete_btn.custom_minimum_size = Vector2(40, 0)
+	_delete_btn.pressed.connect(_toggle_delete_mode)
+	cat_bar.add_child(_delete_btn)
+
+	# Category buttons
+	for category in block_lib.category_names:
+		var btn := Button.new()
+		btn.text = category
+		btn.custom_minimum_size = Vector2(0, 28)
+		var captured := category
+		btn.pressed.connect(func() -> void: _on_category_pressed(captured))
+		cat_bar.add_child(btn)
+
+	# Separator
+	var sep := HSeparator.new()
+	outer_vbox.add_child(sep)
+
+	# Item list (scrollable)
+	_item_scroll = ScrollContainer.new()
+	_item_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_item_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer_vbox.add_child(_item_scroll)
+
+	_item_container = VBoxContainer.new()
+	_item_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_item_container.add_theme_constant_override("separation", 2)
+	_item_scroll.add_child(_item_container)
 
 
 func _on_chunk_size_changed(value: float) -> void:
 	grid.clear_grid()
 	grid.chunk_size = int(value)
 	_noise_seed = randf() * 1000.0
+	grid.noise_seed = _noise_seed
 
 
 func _on_regen_pressed() -> void:
 	_noise_seed = randf() * 1000.0
+	grid.noise_seed = _noise_seed
+	_clear_all_placed_blocks()
 	grid.clear_grid()
 
+
+# ============================================================================
+# OUTLINE
+# ============================================================================
 
 func _setup_outline() -> void:
 	var outer := HEX_SIZE * 1.03

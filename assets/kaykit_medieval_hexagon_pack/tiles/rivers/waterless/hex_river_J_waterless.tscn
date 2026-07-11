@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/tiles/rivers/waterless/hex_river_J_waterless.tres" id="1_gd847"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_dy161"]
+points = PackedVector3Array(1, -0.050019562, 0.57735, 1, -1, 0.57735, 1, -0.050019562, -0.57735, 0.9498825, 0, 0.5484147, 0, -0.050019562, 1.1547, 0, -1, 1.1547, 1, -1, -0.57735, 0, -0.050019562, -1.1547, 0.9498825, 0, -0.5486407, 0, 0, 1.0968294, -0.91836333, 0, 0.5667254, -1, -0.050019562, 0.57735, -1, -1, 0.57735, 0, -1, -1.1547, -1, -0.050019562, -0.57735, -0.9500783, 0, -0.5486407, 0, 0, -1.0970554, -0.9500783, 0, 0.5484147, -1, -1, -0.57735)
+
+[node name="hex_river_J_waterless" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_gd847")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_dy161")

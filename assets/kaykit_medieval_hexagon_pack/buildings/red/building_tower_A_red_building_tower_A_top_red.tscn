@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 ]
+
+[ext_resource type="ArrayMesh" path="res://assets/kaykit_medieval_hexagon_pack/buildings/red/building_tower_A_red_building_tower_A_top_red.tres" id="1_jqbnl"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_e08fa"]
+points = PackedVector3Array(0.496636, 1.8227578, 0.28673303, 0, 2.191735, 0, 0, 1.8227578, 0.573466, 0.49313584, 1.7562972, 0.2847122, 0.496636, 1.8227578, -0.286733, -0.496636, 1.8227578, 0.28673303, 0, 1.8227578, -0.573466, -0.496636, 1.8227578, -0.286733, 0, 1.7562972, 0.56942433, -0.49323305, 1.7562972, 0.2847122, 0.02994594, 1.277924, 0.4611978, 0.3843387, 1.277924, 0.25653285, 0.4143819, 1.277924, 0.20455265, 0.49313584, 1.7562972, -0.28482443, 0, 1.7562972, -0.5695366, -0.49323305, 1.7562972, -0.28482443, -0.030043185, 1.277924, 0.4611978, -0.4144791, 1.277924, 0.20455265, -0.38443595, 1.277924, 0.25653285, 0.4143819, 1.277924, -0.20466495, 0.3843387, 1.277924, -0.2566451, 0.02994594, 1.277924, -0.46131006, -0.030043185, 1.277924, -0.46131006, -0.38443595, 1.277924, -0.2566451, -0.4144791, 1.277924, -0.20466495)
+
+[node name="building_tower_A_red_building_tower_A_top_red" type="StaticBody3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+mesh = ExtResource("1_jqbnl")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, 0.8660254, 0, 0, 0)
+shape = SubResource("ConvexPolygonShape3D_e08fa")
