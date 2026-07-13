@@ -243,7 +243,7 @@ func _generate_chunk_tiles(chunk_coords: Vector2i, noise: FastNoiseLite) -> Arra
 			tiles[idx] = {
 				"coords": Vector3i(q, r, s_coord),
 				"type_index": type_idx,
-				"elevation": elevation + _tile_jitter(q, r),
+				"elevation": elevation,
 			}
 			idx += 1
 
@@ -259,7 +259,7 @@ static func _tile_jitter(q: int, r: int) -> float:
 	var h := (q * 374761393 + r * 668265263) % 1000000007
 	if h < 0:
 		h = -h
-	return (float(h % 1000) / 500.0 - 1.0) * 0.05
+	return (float(h % 1000) / 500.0 - 1.0) * 0.5  # 50% for testing, change to 0.1 for release
 
 
 func _drain_gen_results() -> void:

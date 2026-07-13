@@ -68,6 +68,8 @@ var _tile_overlay_type: Dictionary = {}
 var _road_instances: Dictionary = {}
 var _river_instances: Dictionary = {}
 var _painter_mode: String = ""
+var _painter_mouse_held := false
+var _painter_last_cell := Vector3i.ZERO
 var _overlay_dot_rid: RID = RID()
 var _overlay_strip_rid: RID = RID()
 var _overlay_river_strip_rid: RID = RID()
@@ -217,6 +219,20 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 		return
 	last_mouse = event.position
 	var cell := grid.raycast_hex(camera, event.position)
+	if _painter_mouse_held and _painter_mode != "" and cell != null:
+		var coords := cell.coords
+		if coords != _painter_last_cell:
+			var current: String = _tile_overlay_type.get(coords, "")
+			if current != _painter_mode:
+				if _painter_mode == "road":
+					_set_painted_cell(coords, "road")
+				elif _painter_mode == "river":
+					_set_painted_cell(coords, "river")
+				for d in 6:
+					var n := coords + HexGridMath.cube_direction(d)
+					if _tile_overlay_type.has(n):
+						_rebuild_painted_cell(n)
+			_painter_last_cell = coords
 	if cell != null and cell.coords != hovered_coords:
 		hovered_coords = cell.coords
 		_update_outline(cell)
@@ -231,6 +247,9 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 
 
 func _handle_click(event: InputEventMouseButton) -> void:
+	if _painter_mode != "" and event.button_index == MOUSE_BUTTON_LEFT:
+		_handle_painter_click(event)
+		return
 	if not event.pressed:
 		return
 	match event.button_index:
@@ -241,9 +260,7 @@ func _handle_click(event: InputEventMouseButton) -> void:
 			cam_zoom = clampf(cam_zoom + 2.0, 5.0, 80.0)
 			_needs_redraw = true
 		MOUSE_BUTTON_LEFT:
-			if _painter_mode != "":
-				_handle_painter_click(event)
-			elif placement_mode:
+			if placement_mode:
 				_handle_block_place(event)
 			elif delete_mode:
 				_handle_block_delete(event)
@@ -550,6 +567,8 @@ func _set_painter_mode(mode: String) -> void:
 		_painter_mode = ""
 	else:
 		_painter_mode = mode
+	_painter_mouse_held = false
+	_painter_last_cell = Vector3i.ZERO
 	placement_mode = false
 	delete_mode = false
 	_selected_item_name = ""
@@ -568,11 +587,12 @@ func _update_painter_buttons() -> void:
 
 
 func _handle_painter_click(event: InputEventMouseButton) -> void:
-	var now := Time.get_ticks_msec() / 1000.0
-	if now - _last_left_click_time > DOUBLE_CLICK_THRESHOLD:
-		_last_left_click_time = now
+	if event.button_index != MOUSE_BUTTON_LEFT:
 		return
-	_last_left_click_time = now
+	_painter_mouse_held = event.pressed
+	if not event.pressed:
+		_painter_last_cell = Vector3i.ZERO
+		return
 	var mouse_pos := get_viewport().get_mouse_position()
 	var cell := grid.raycast_hex(camera, mouse_pos)
 	if cell == null:
@@ -585,6 +605,7 @@ func _handle_painter_click(event: InputEventMouseButton) -> void:
 		_set_painted_cell(coords, "road")
 	elif _painter_mode == "river":
 		_set_painted_cell(coords, "river")
+	_painter_last_cell = coords
 	for d in 6:
 		var n := coords + HexGridMath.cube_direction(d)
 		if _tile_overlay_type.has(n):
@@ -629,7 +650,8 @@ func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictiona
 	if cell == null:
 		return
 	var world_pos := HexGridMath.cube_to_world_flat_top(coords, HEX_SIZE)
-	var y := cell.elevation * 0.05 + 0.025 if grid.flat_mode else cell.elevation + 0.025
+	var jitter := HexGridManager._tile_jitter(coords.x, coords.y)
+	var y := cell.elevation * 0.05 + jitter + 0.025 if grid.flat_mode else cell.elevation + jitter + 0.025
 
 	var is_river: bool = flag_dict == _river_cells
 	var strip_mesh := _overlay_river_strip_rid if is_river else _overlay_strip_rid
@@ -1021,7 +1043,8 @@ func _update_camera() -> void:
 
 func _update_outline(cell: HexCellData) -> void:
 	var world_pos := HexGridMath.cube_to_world_flat_top(cell.coords, HEX_SIZE)
-	var y := cell.elevation if not grid.flat_mode else 0.0
+	var jitter := HexGridManager._tile_jitter(cell.coords.x, cell.coords.y)
+	var y := cell.elevation + jitter if not grid.flat_mode else cell.elevation * 0.05 + jitter
 	RenderingServer.instance_set_transform(
 		_outline_inst_rid, Transform3D(Basis.IDENTITY, Vector3(world_pos.x, y + 0.02, world_pos.z))
 	)
