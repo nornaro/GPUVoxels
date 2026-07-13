@@ -243,6 +243,8 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 				var n := coords + HexGridMath.cube_direction(d)
 				if _tile_overlay_type.has(n):
 					_rebuild_painted_cell(n)
+			if _tile_overlay_type.has(coords):
+				_rebuild_painted_cell(coords)
 	if cell != null and cell.coords != hovered_coords:
 		hovered_coords = cell.coords
 		_update_outline(cell)
@@ -626,6 +628,8 @@ func _handle_painter_click(event: InputEventMouseButton) -> void:
 		var n := coords + HexGridMath.cube_direction(d)
 		if _tile_overlay_type.has(n):
 			_rebuild_painted_cell(n)
+	if _tile_overlay_type.has(coords):
+		_rebuild_painted_cell(coords)
 
 
 func _set_painted_cell(coords: Vector3i, ptype: String) -> void:
