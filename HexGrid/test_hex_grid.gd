@@ -64,11 +64,13 @@ var _delete_btn: Button = null
 
 var _road_cells: Dictionary = {}
 var _river_cells: Dictionary = {}
+var _tile_overlay_type: Dictionary = {}
 var _road_instances: Dictionary = {}
 var _river_instances: Dictionary = {}
 var _painter_mode: String = ""
 var _overlay_dot_rid: RID = RID()
 var _overlay_strip_rid: RID = RID()
+var _overlay_river_strip_rid: RID = RID()
 var _road_mat: StandardMaterial3D = null
 var _river_mat: StandardMaterial3D = null
 var _road_btn: Button = null
@@ -150,6 +152,8 @@ func _exit_tree() -> void:
 		RenderingServer.free_rid(_overlay_dot_rid)
 	if _overlay_strip_rid.is_valid():
 		RenderingServer.free_rid(_overlay_strip_rid)
+	if _overlay_river_strip_rid.is_valid():
+		RenderingServer.free_rid(_overlay_river_strip_rid)
 	if _ghost_inst.is_valid():
 		RenderingServer.free_rid(_ghost_inst)
 	if _outline_inst_rid.is_valid():
@@ -490,6 +494,44 @@ func _setup_overlay_meshes() -> void:
 	sarr[Mesh.ARRAY_INDEX] = si
 	RenderingServer.mesh_add_surface_from_arrays(_overlay_strip_rid, RenderingServer.PRIMITIVE_TRIANGLES, sarr)
 
+	# --- Curved river strip mesh (S-curve along +X axis) ---
+	var rv_len := sqrt(3.0) * HEX_SIZE
+	var rv_hw := 0.175 * HEX_SIZE
+	var rv_half := rv_len * 0.5
+	var rv_curve := 0.2 * HEX_SIZE
+	var rv: PackedVector3Array = []
+	var rn: PackedVector3Array = []
+	var ru: PackedVector2Array = []
+	var ri: PackedInt32Array = []
+	for i in 8:
+		var t := float(i) / 7.0
+		var x := t * rv_len - rv_half
+		var curve_z := rv_curve * sin(t * PI)
+		rv.append(Vector3(x, 0.0, -rv_hw + curve_z))
+		rn.append(Vector3.UP)
+		ru.append(Vector2(t, 0.0))
+	for i in 8:
+		var t := float(i) / 7.0
+		var x := t * rv_len - rv_half
+		var curve_z := rv_curve * sin(t * PI)
+		rv.append(Vector3(x, 0.0, rv_hw + curve_z))
+		rn.append(Vector3.UP)
+		ru.append(Vector2(t, 1.0))
+	for i in 7:
+		var bl := i
+		var br := i + 8
+		var tl := i + 1
+		var tr := i + 9
+		ri.append_array([bl, br, tl, tl, br, tr])
+	_overlay_river_strip_rid = RenderingServer.mesh_create()
+	var rarr := []
+	rarr.resize(Mesh.ARRAY_MAX)
+	rarr[Mesh.ARRAY_VERTEX] = rv
+	rarr[Mesh.ARRAY_NORMAL] = rn
+	rarr[Mesh.ARRAY_TEX_UV] = ru
+	rarr[Mesh.ARRAY_INDEX] = ri
+	RenderingServer.mesh_add_surface_from_arrays(_overlay_river_strip_rid, RenderingServer.PRIMITIVE_TRIANGLES, rarr)
+
 	# --- Materials ---
 	_road_mat = StandardMaterial3D.new()
 	_road_mat.albedo_color = Color(0.45, 0.35, 0.22, 0.9)
@@ -535,27 +577,50 @@ func _handle_painter_click(event: InputEventMouseButton) -> void:
 	var cell := grid.raycast_hex(camera, mouse_pos)
 	if cell == null:
 		return
-	if _painter_mode == "road":
-		_toggle_painter_cell(cell.coords, _road_cells, _road_instances, _road_mat)
+	var coords := cell.coords
+	var current: String = _tile_overlay_type.get(coords, "")
+	if current == _painter_mode:
+		_remove_painted_cell(coords)
+	elif _painter_mode == "road":
+		_set_painted_cell(coords, "road")
 	elif _painter_mode == "river":
-		_toggle_painter_cell(cell.coords, _river_cells, _river_instances, _river_mat)
+		_set_painted_cell(coords, "river")
+	for d in 6:
+		var n := coords + HexGridMath.cube_direction(d)
+		if _tile_overlay_type.has(n):
+			_rebuild_painted_cell(n)
 
 
-func _toggle_painter_cell(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictionary, mat: StandardMaterial3D) -> void:
-	if flag_dict.has(coords):
-		flag_dict.erase(coords)
-		_clear_overlay(coords, inst_dict)
-		for d in 6:
-			var n := coords + HexGridMath.cube_direction(d)
-			if flag_dict.has(n):
-				_build_overlay(n, flag_dict, inst_dict, mat)
+func _set_painted_cell(coords: Vector3i, ptype: String) -> void:
+	_tile_overlay_type[coords] = ptype
+	if ptype == "road":
+		_road_cells[coords] = true
+		_river_cells.erase(coords)
+		_clear_overlay(coords, _river_instances)
 	else:
-		flag_dict[coords] = true
-		_build_overlay(coords, flag_dict, inst_dict, mat)
-		for d in 6:
-			var n := coords + HexGridMath.cube_direction(d)
-			if flag_dict.has(n):
-				_build_overlay(n, flag_dict, inst_dict, mat)
+		_river_cells[coords] = true
+		_road_cells.erase(coords)
+		_clear_overlay(coords, _road_instances)
+	_rebuild_painted_cell(coords)
+
+
+func _remove_painted_cell(coords: Vector3i) -> void:
+	var ptype: String = _tile_overlay_type.get(coords, "")
+	_tile_overlay_type.erase(coords)
+	_road_cells.erase(coords)
+	_river_cells.erase(coords)
+	if ptype == "road":
+		_clear_overlay(coords, _road_instances)
+	else:
+		_clear_overlay(coords, _river_instances)
+
+
+func _rebuild_painted_cell(coords: Vector3i) -> void:
+	var ptype: String = _tile_overlay_type.get(coords, "")
+	if ptype == "road":
+		_build_overlay(coords, _road_cells, _road_instances, _road_mat)
+	elif ptype == "river":
+		_build_overlay(coords, _river_cells, _river_instances, _river_mat)
 
 
 func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictionary, mat: StandardMaterial3D) -> void:
@@ -565,6 +630,9 @@ func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictiona
 		return
 	var world_pos := HexGridMath.cube_to_world_flat_top(coords, HEX_SIZE)
 	var y := cell.elevation * 0.05 + 0.025 if grid.flat_mode else cell.elevation + 0.025
+
+	var is_river: bool = flag_dict == _river_cells
+	var strip_mesh := _overlay_river_strip_rid if is_river else _overlay_strip_rid
 
 	var has_neighbor := false
 	var neighbor_dirs: Array[int] = []
@@ -580,7 +648,7 @@ func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictiona
 
 	for d in neighbor_dirs:
 		var angle := deg_to_rad(30.0 - 60.0 * d)
-		_make_overlay_inst(_overlay_strip_rid, mat, world_pos, y, angle, inst_dict, coords)
+		_make_overlay_inst(strip_mesh, mat, world_pos, y, angle, inst_dict, coords)
 
 	if neighbor_dirs.size() == 2:
 		var a0 := deg_to_rad(30.0 - 60.0 * neighbor_dirs[0])
@@ -624,6 +692,7 @@ func _clear_all_overlays() -> void:
 				RenderingServer.free_rid(inst)
 	_river_instances.clear()
 	_river_cells.clear()
+	_tile_overlay_type.clear()
 
 
 func _get_painter_overlay_y(cell: HexCellData) -> float:
@@ -880,12 +949,14 @@ func _load_placed_blocks() -> void:
 		var coords := Vector3i(int(entry["q"]), int(entry["r"]), int(entry["s"]))
 		if grid.has_tile(coords) and not _road_cells.has(coords):
 			_road_cells[coords] = true
+			_tile_overlay_type[coords] = "road"
 	for coords in _road_cells:
 		_build_overlay(coords, _road_cells, _road_instances, _road_mat)
 	for entry in rivers_data:
 		var coords := Vector3i(int(entry["q"]), int(entry["r"]), int(entry["s"]))
 		if grid.has_tile(coords) and not _river_cells.has(coords):
 			_river_cells[coords] = true
+			_tile_overlay_type[coords] = "river"
 	for coords in _river_cells:
 		_build_overlay(coords, _river_cells, _river_instances, _river_mat)
 	_show_status("Loaded %d blocks, %d roads, %d rivers" % [loaded, roads_data.size(), rivers_data.size()])
