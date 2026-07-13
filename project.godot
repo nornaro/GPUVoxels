@@ -24,6 +24,10 @@ config/icon="res://icon.svg"
 McpBridge="*uid://dw5bvj1fckgfh"
 MCPRuntimeProbe="*res://addons/godot_mcp/runtime/mcp_runtime_probe.gd"
 
+[debug]
+
+settings/stdout/print_fps=true
+
 [display]
 
 window/size/viewport_width=1600
@@ -33,7 +37,7 @@ window/stretch/aspect="ignore"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/gdagent/plugin.cfg", "res://addons/godot_ai/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
+enabled=PackedStringArray("res://addons/gdagent/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
 
 [global_group]
 

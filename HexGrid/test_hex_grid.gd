@@ -255,6 +255,7 @@ func _handle_key(event: InputEventKey) -> void:
 			_noise_seed = randf() * 1000.0
 			grid.noise_seed = _noise_seed
 			_clear_all_placed_blocks()
+			_clear_all_overlays()
 			grid.clear_grid()
 		KEY_F:
 			grid.set_flat_mode(not grid.flat_mode)
@@ -787,10 +788,18 @@ func _save_placed_blocks() -> void:
 			"item_name": entry["item_name"],
 			"rotation": entry["rotation"],
 		})
+	var roads: Array[Dictionary] = []
+	for coords in _road_cells:
+		roads.append({"q": coords.x, "r": coords.y, "s": coords.z})
+	var rivers: Array[Dictionary] = []
+	for coords in _river_cells:
+		rivers.append({"q": coords.x, "r": coords.y, "s": coords.z})
 	var save_data: Dictionary = {
 		"noise_seed": _noise_seed,
 		"noise_freq": grid.noise_freq,
 		"blocks": blocks,
+		"roads": roads,
+		"rivers": rivers,
 	}
 	var json_text := JSON.stringify(save_data, "\t")
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -799,7 +808,7 @@ func _save_placed_blocks() -> void:
 		return
 	f.store_string(json_text)
 	f.close()
-	_show_status("Saved %d blocks" % blocks.size())
+	_show_status("Saved %d blocks, %d roads, %d rivers" % [blocks.size(), roads.size(), rivers.size()])
 
 
 func _load_placed_blocks() -> void:
@@ -865,7 +874,21 @@ func _load_placed_blocks() -> void:
 		RenderingServer.instance_set_transform(inst, Transform3D(scaled_basis, Vector3(world_pos.x, y_val, world_pos.z)))
 		_placed_blocks[coords] = {"rid": inst, "item_name": item_name, "rotation": rot_y}
 		loaded += 1
-	_show_status("Loaded %d blocks" % loaded)
+	var roads_data: Array = parsed.get("roads", []) if parsed is Dictionary else []
+	var rivers_data: Array = parsed.get("rivers", []) if parsed is Dictionary else []
+	for entry in roads_data:
+		var coords := Vector3i(int(entry["q"]), int(entry["r"]), int(entry["s"]))
+		if grid.has_tile(coords) and not _road_cells.has(coords):
+			_road_cells[coords] = true
+	for coords in _road_cells:
+		_build_overlay(coords, _road_cells, _road_instances, _road_mat)
+	for entry in rivers_data:
+		var coords := Vector3i(int(entry["q"]), int(entry["r"]), int(entry["s"]))
+		if grid.has_tile(coords) and not _river_cells.has(coords):
+			_river_cells[coords] = true
+	for coords in _river_cells:
+		_build_overlay(coords, _river_cells, _river_instances, _river_mat)
+	_show_status("Loaded %d blocks, %d roads, %d rivers" % [loaded, roads_data.size(), rivers_data.size()])
 
 
 # ============================================================================
@@ -1334,6 +1357,7 @@ func _on_regen_pressed() -> void:
 	_noise_seed = randf() * 1000.0
 	grid.noise_seed = _noise_seed
 	_clear_all_placed_blocks()
+	_clear_all_overlays()
 	grid.clear_grid()
 
 
