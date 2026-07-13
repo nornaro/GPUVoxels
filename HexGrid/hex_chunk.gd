@@ -143,18 +143,17 @@ func _make_transform(cell: HexCellData) -> Transform3D:
 		actual_flat_mode = grid_manager.flat_mode
 
 	var abs_pos: Vector3 = HexGridMath.cube_to_world_flat_top(cell.coords, actual_hex_size)
-	var jitter := HexGridManager._tile_jitter(cell.coords.x, cell.coords.y)
 
 	if actual_flat_mode:
-		var flat_y := cell.elevation * 0.05
-		abs_pos.y = flat_y + jitter
+		abs_pos.y = cell.elevation * 0.2
 		return Transform3D(
 			Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, 1.0, 0), Vector3(0, 0, actual_hex_size)),
 			abs_pos
 		)
 
+	var voxel_h := floorf(cell.elevation) + HexGridManager._tile_jitter(cell.coords.x, cell.coords.y)
 	return Transform3D(
-		Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, cell.elevation + jitter, 0), Vector3(0, 0, actual_hex_size)),
+		Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, voxel_h, 0), Vector3(0, 0, actual_hex_size)),
 		abs_pos
 	)
 

@@ -202,7 +202,7 @@ func _handle_wasd(delta: float) -> void:
 
 
 func _handle_hover(event: InputEventMouseMotion) -> void:
-	if event.button_mask == MOUSE_BUTTON_RIGHT:
+	if event.button_mask == MOUSE_BUTTON_RIGHT and _painter_mode == "":
 		if last_mouse != Vector2.INF:
 			var delta := event.position - last_mouse
 			cam_rot_y -= delta.x * 0.3
@@ -219,20 +219,20 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 		return
 	last_mouse = event.position
 	var cell := grid.raycast_hex(camera, event.position)
-	if _painter_mouse_held and _painter_mode != "" and cell != null:
+	var mouse_held := _painter_mouse_held or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	if mouse_held and _painter_mode != "" and cell != null:
 		var coords := cell.coords
 		if coords != _painter_last_cell:
-			var current: String = _tile_overlay_type.get(coords, "")
-			if current != _painter_mode:
-				if _painter_mode == "road":
-					_set_painted_cell(coords, "road")
-				elif _painter_mode == "river":
-					_set_painted_cell(coords, "river")
-				for d in 6:
-					var n := coords + HexGridMath.cube_direction(d)
-					if _tile_overlay_type.has(n):
-						_rebuild_painted_cell(n)
+			if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+				_remove_painted_cell(coords)
+			elif Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+				if not _tile_overlay_type.has(coords):
+					_set_painted_cell(coords, _painter_mode)
 			_painter_last_cell = coords
+			for d in 6:
+				var n := coords + HexGridMath.cube_direction(d)
+				if _tile_overlay_type.has(n):
+					_rebuild_painted_cell(n)
 	if cell != null and cell.coords != hovered_coords:
 		hovered_coords = cell.coords
 		_update_outline(cell)
@@ -247,9 +247,10 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 
 
 func _handle_click(event: InputEventMouseButton) -> void:
-	if _painter_mode != "" and event.button_index == MOUSE_BUTTON_LEFT:
-		_handle_painter_click(event)
-		return
+	if _painter_mode != "":
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			_handle_painter_click(event)
+			return
 	if not event.pressed:
 		return
 	match event.button_index:
@@ -272,6 +273,22 @@ func _handle_key(event: InputEventKey) -> void:
 	if not event.pressed:
 		return
 	match event.keycode:
+		KEY_ESCAPE:
+			if _painter_mode != "":
+				_painter_mode = ""
+				_painter_mouse_held = false
+				_painter_last_cell = Vector3i.ZERO
+				_update_painter_buttons()
+			elif placement_mode:
+				placement_mode = false
+				_selected_item_name = ""
+				_update_place_button()
+				_update_ghost_visibility()
+				_update_item_buttons()
+			elif delete_mode:
+				delete_mode = false
+				_update_delete_button()
+				_update_ghost_visibility()
 		KEY_R:
 			_noise_seed = randf() * 1000.0
 			grid.noise_seed = _noise_seed
@@ -487,17 +504,18 @@ func _setup_overlay_meshes() -> void:
 	darr[Mesh.ARRAY_INDEX] = di
 	RenderingServer.mesh_add_surface_from_arrays(_overlay_dot_rid, RenderingServer.PRIMITIVE_TRIANGLES, darr)
 
-	# --- Strip mesh (rectangle along +X axis, length = edge-to-center distance) ---
-	var strip_len := 0.9 * HEX_SIZE
-	var hw := 0.175 * HEX_SIZE
+	# --- Strip mesh (rectangle along +X axis, edge-to-center) ---
+	var strip_len := sqrt(3.0) * HEX_SIZE
+	var hw := 0.15 * HEX_SIZE
 	var sv: PackedVector3Array = []
 	var sn: PackedVector3Array = []
 	var su: PackedVector2Array = []
 	var si: PackedInt32Array = []
-	sv.append(Vector3(0.0, 0.0, -hw))
-	sv.append(Vector3(0.0, 0.0, hw))
-	sv.append(Vector3(strip_len, 0.0, hw))
-	sv.append(Vector3(strip_len, 0.0, -hw))
+	var s_half := strip_len * 0.5
+	sv.append(Vector3(-s_half, 0.0, -hw))
+	sv.append(Vector3(-s_half, 0.0, hw))
+	sv.append(Vector3(s_half, 0.0, hw))
+	sv.append(Vector3(s_half, 0.0, -hw))
 	for _j in 4:
 		sn.append(Vector3.UP)
 	su.append_array([Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)])
@@ -513,7 +531,7 @@ func _setup_overlay_meshes() -> void:
 
 	# --- Curved river strip mesh (S-curve along +X axis) ---
 	var rv_len := sqrt(3.0) * HEX_SIZE
-	var rv_hw := 0.175 * HEX_SIZE
+	var rv_hw := 0.15 * HEX_SIZE
 	var rv_half := rv_len * 0.5
 	var rv_curve := 0.2 * HEX_SIZE
 	var rv: PackedVector3Array = []
@@ -587,9 +605,7 @@ func _update_painter_buttons() -> void:
 
 
 func _handle_painter_click(event: InputEventMouseButton) -> void:
-	if event.button_index != MOUSE_BUTTON_LEFT:
-		return
-	_painter_mouse_held = event.pressed
+	_painter_mouse_held = event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	if not event.pressed:
 		_painter_last_cell = Vector3i.ZERO
 		return
@@ -598,13 +614,11 @@ func _handle_painter_click(event: InputEventMouseButton) -> void:
 	if cell == null:
 		return
 	var coords := cell.coords
-	var current: String = _tile_overlay_type.get(coords, "")
-	if current == _painter_mode:
+	if event.button_index == MOUSE_BUTTON_RIGHT:
 		_remove_painted_cell(coords)
-	elif _painter_mode == "road":
-		_set_painted_cell(coords, "road")
-	elif _painter_mode == "river":
-		_set_painted_cell(coords, "river")
+	elif event.button_index == MOUSE_BUTTON_LEFT:
+		if not _tile_overlay_type.has(coords):
+			_set_painted_cell(coords, _painter_mode)
 	_painter_last_cell = coords
 	for d in 6:
 		var n := coords + HexGridMath.cube_direction(d)
@@ -644,14 +658,19 @@ func _rebuild_painted_cell(coords: Vector3i) -> void:
 		_build_overlay(coords, _river_cells, _river_instances, _river_mat)
 
 
+func _get_terrain_y(cell: HexCellData) -> float:
+	if grid.flat_mode:
+		return cell.elevation * 0.2
+	return floorf(cell.elevation) + HexGridManager._tile_jitter(cell.coords.x, cell.coords.y)
+
+
 func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictionary, mat: StandardMaterial3D) -> void:
 	_clear_overlay(coords, inst_dict)
 	var cell := grid.get_cell(coords)
 	if cell == null:
 		return
 	var world_pos := HexGridMath.cube_to_world_flat_top(coords, HEX_SIZE)
-	var jitter := HexGridManager._tile_jitter(coords.x, coords.y)
-	var y := cell.elevation * 0.05 + jitter + 0.025 if grid.flat_mode else cell.elevation + jitter + 0.025
+	var y := _get_terrain_y(cell) + 0.025
 
 	var is_river: bool = flag_dict == _river_cells
 	var strip_mesh := _overlay_river_strip_rid if is_river else _overlay_strip_rid
@@ -1043,10 +1062,9 @@ func _update_camera() -> void:
 
 func _update_outline(cell: HexCellData) -> void:
 	var world_pos := HexGridMath.cube_to_world_flat_top(cell.coords, HEX_SIZE)
-	var jitter := HexGridManager._tile_jitter(cell.coords.x, cell.coords.y)
-	var y := cell.elevation + jitter if not grid.flat_mode else cell.elevation * 0.05 + jitter
+	var y := _get_terrain_y(cell) + 0.02
 	RenderingServer.instance_set_transform(
-		_outline_inst_rid, Transform3D(Basis.IDENTITY, Vector3(world_pos.x, y + 0.02, world_pos.z))
+		_outline_inst_rid, Transform3D(Basis.IDENTITY, Vector3(world_pos.x, y, world_pos.z))
 	)
 	RenderingServer.instance_set_visible(_outline_inst_rid, true)
 
