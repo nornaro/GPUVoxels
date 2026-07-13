@@ -209,9 +209,9 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 			cam_rot_x -= delta.y * 0.3
 			_needs_redraw = true
 		last_mouse = event.position
-		var cell := grid.raycast_hex(camera, event.position)
-		if _painter_mode != "" and cell != null:
-			var coords := cell.coords
+		var ray_cell := grid.raycast_hex(camera, event.position)
+		if _painter_mode != "" and ray_cell != null:
+			var coords := ray_cell.coords
 			if coords != _painter_last_cell:
 				_remove_painted_cell(coords)
 				_painter_last_cell = coords
@@ -235,9 +235,6 @@ func _handle_hover(event: InputEventMouseMotion) -> void:
 		if coords != _painter_last_cell:
 			if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 				_remove_painted_cell(coords)
-			elif Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-				if not _tile_overlay_type.has(coords):
-					_set_painted_cell(coords, _painter_mode)
 			_painter_last_cell = coords
 			for d in 6:
 				var n := coords + HexGridMath.cube_direction(d)
@@ -483,7 +480,7 @@ func _update_ghost_visibility() -> void:
 # ============================================================================
 
 func _setup_overlay_meshes() -> void:
-	var scenario := get_world_3d().scenario
+	var _scenario := get_world_3d().scenario
 
 	# --- Dot mesh (hexagonal patch) ---
 	var dot_r := 0.25 * HEX_SIZE
@@ -524,7 +521,7 @@ func _setup_overlay_meshes() -> void:
 	for _j in 4:
 		sn.append(Vector3.UP)
 	su.append_array([Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)])
-	si.append_array([0, 1, 2, 0, 2, 3])
+	si.append_array([0, 2, 1, 0, 3, 2])
 	_overlay_strip_rid = RenderingServer.mesh_create()
 	var sarr := []
 	sarr.resize(Mesh.ARRAY_MAX)
@@ -559,8 +556,8 @@ func _setup_overlay_meshes() -> void:
 		var bl := i
 		var br := i + 8
 		var tl := i + 1
-		var tr := i + 9
-		ri.append_array([bl, br, tl, tl, br, tr])
+		var tr2 := i + 9
+		ri.append_array([bl, tl, br, tl, tr2, br])
 	_overlay_river_strip_rid = RenderingServer.mesh_create()
 	var rarr := []
 	rarr.resize(Mesh.ARRAY_MAX)
@@ -577,6 +574,7 @@ func _setup_overlay_meshes() -> void:
 	_road_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_road_mat.no_depth_test = true
 	_road_mat.render_priority = 1
+	_road_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 	_river_mat = StandardMaterial3D.new()
 	_river_mat.albedo_color = Color(0.2, 0.45, 0.8, 0.9)
@@ -585,6 +583,7 @@ func _setup_overlay_meshes() -> void:
 	_river_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_river_mat.no_depth_test = true
 	_river_mat.render_priority = 1
+	_river_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 
 func _set_painter_mode(mode: String) -> void:
@@ -707,8 +706,8 @@ func _make_overlay_inst(mesh_rid: RID, mat: StandardMaterial3D, pos: Vector3, y:
 	RenderingServer.instance_set_scenario(inst, get_world_3d().scenario)
 	RenderingServer.instance_set_base(inst, mesh_rid)
 	RenderingServer.instance_set_surface_override_material(inst, 0, mat.get_rid())
-	var basis := Basis(Vector3.UP, rot_y)
-	RenderingServer.instance_set_transform(inst, Transform3D(basis, Vector3(pos.x, y, pos.z)))
+	var rot_basis := Basis(Vector3.UP, rot_y)
+	RenderingServer.instance_set_transform(inst, Transform3D(rot_basis, Vector3(pos.x, y, pos.z)))
 	if not inst_dict.has(coords):
 		inst_dict[coords] = []
 	inst_dict[coords].append(inst)

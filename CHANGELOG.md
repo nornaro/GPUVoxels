@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - **Biomes too small/inconsistent** — Added fractal noise (FBM, 3 octaves) with lower base frequency (0.008) for larger, more natural biome regions.
 - **Terrain modes** — Default view shows smooth terrain (flat hexes at varying heights). F key switches to voxel view with 1m-stepped hex columns.
 - **Painter UX** — LMB places, RMB removes. Escape cancels all modes. Strip meshes now reach neighbor centers (sqrt(3) * HEX_SIZE).
+- **Road/river strips invisible** — Strip meshes had clockwise winding (back face) while CULL_BACK was active. Reversed winding order on both road and river strip meshes, added CULL_DISABLED to overlay materials.
 
 ### Added
 - **Terrain deformation** — Voxel mode has deterministic height jitter for natural variation between steps.
