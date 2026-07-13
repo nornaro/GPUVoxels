@@ -207,9 +207,6 @@ func _generate_chunk_tiles(chunk_coords: Vector2i, noise: FastNoiseLite) -> Arra
 	var q0: int = chunk_coords.x * chunk_size
 	var r0: int = chunk_coords.y * chunk_size
 
-	# Batch noise via image
-	var img := noise.get_image(chunk_size, chunk_size, false, false, true)
-
 	var tiles: Array[Dictionary] = []
 	tiles.resize(chunk_size * chunk_size)
 	var idx := 0
@@ -220,7 +217,7 @@ func _generate_chunk_tiles(chunk_coords: Vector2i, noise: FastNoiseLite) -> Arra
 			var r: int = r0 + dr
 			var s_coord: int = -q - r
 
-			var nval: float = img.get_pixel(dq, dr).r * 2.0 - 1.0
+			var nval: float = noise.get_noise_2d(float(q), float(r))
 
 			var elevation: float
 			var type_idx: int
