@@ -315,11 +315,13 @@ func _handle_key(event: InputEventKey) -> void:
 			_toggle_build_menu()
 		KEY_DELETE:
 			_clear_all_placed_blocks()
-		KEY_V:
+		KEY_V, KEY_E:
 			_place_rotation += deg_to_rad(60.0)
 			if _place_rotation >= TAU:
 				_place_rotation -= TAU
 			_update_ghost_visibility()
+		KEY_Q:
+			_cycle_next_item()
 		KEY_S:
 			if event.ctrl_pressed:
 				_save_placed_blocks()
@@ -575,13 +577,13 @@ func _setup_overlay_meshes() -> void:
 	_road_mat = StandardMaterial3D.new()
 	_road_mat.albedo_color = Color(0.45, 0.35, 0.22, 0.9)
 	_road_mat.roughness = 0.95
-	_road_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	_road_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
 	_river_mat = StandardMaterial3D.new()
 	_river_mat.albedo_color = Color(0.2, 0.45, 0.8, 0.85)
 	_river_mat.roughness = 0.3
 	_river_mat.metallic = 0.1
-	_river_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	_river_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
 
 func _set_painter_mode(mode: String) -> void:
@@ -666,7 +668,7 @@ func _rebuild_painted_cell(coords: Vector3i) -> void:
 
 func _get_terrain_y(cell: HexCellData) -> float:
 	if grid.flat_mode:
-		return cell.elevation * 0.15
+		return 0.0
 	return floorf(cell.elevation)
 
 
@@ -774,6 +776,18 @@ func _select_first_item() -> void:
 	if block_lib.get_category_count() > 0:
 		var first_cat: String = block_lib.category_names[0]
 		_select_category(first_cat)
+
+
+func _cycle_next_item() -> void:
+	var all_names: PackedStringArray = block_lib.get_all_item_names()
+	if all_names.is_empty():
+		return
+	if not placement_mode:
+		_select_item(all_names[0])
+		return
+	var idx := all_names.find(_selected_item_name)
+	idx = (idx + 1) % all_names.size()
+	_select_item(all_names[idx])
 
 
 func _select_category(category: String) -> void:
@@ -975,7 +989,7 @@ func _load_placed_blocks() -> void:
 		var cell := grid.get_cell(coords)
 		var y_val := 0.0
 		if cell != null:
-			y_val = cell.elevation if not grid.flat_mode else 0.0
+			y_val = _get_terrain_y(cell)
 		var inst := RenderingServer.instance_create()
 		RenderingServer.instance_set_scenario(inst, get_world_3d().scenario)
 		RenderingServer.instance_set_base(inst, item["mesh_rid"])
