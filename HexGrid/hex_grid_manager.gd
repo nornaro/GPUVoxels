@@ -7,13 +7,13 @@ signal chunk_loaded(chunk_coords: Vector2i)
 signal chunk_unloaded(chunk_coords: Vector2i)
 
 # Chunk configuration
-@export_range(8, 256, 8) var chunk_size: int = 32:
+@export_range(8, 256, 8) var chunk_size: int = 16:
 	set(v):
 		chunk_size = clampi(v, 8, 256)
 		if is_inside_tree() and Engine.is_editor_hint():
 			_rebuild_all()
 
-@export_range(1, 16, 1) var visible_chunk_radius: int = 3:
+@export_range(1, 16, 1) var visible_chunk_radius: int = 8:
 	set(v):
 		visible_chunk_radius = clampi(v, 1, 16)
 		if is_inside_tree():
@@ -26,7 +26,7 @@ signal chunk_unloaded(chunk_coords: Vector2i)
 			_rebuild_all()
 
 @export var prism_height: float = 2.0
-@export var flat_mode: bool = false:
+@export var flat_mode: bool = true:
 	set(v):
 		if flat_mode != v:
 			flat_mode = v
@@ -66,13 +66,13 @@ var _pending_transforms: Dictionary = {}
 
 # === BACKGROUND TERRAIN GENERATION ===
 var noise_seed: float = 0.0
-var noise_freq: float = 0.15
+var noise_freq: float = 0.05
 
 # Type mapping: type_index from noise → mesh_id
 var type_mapping: Array[int] = [0, 1, 2, 3, 4]
 
 # Tiles per frame budget for placing results on main thread
-@export_range(64, 16384, 64) var tiles_per_frame: int = 128
+@export_range(64, 65536, 64) var tiles_per_frame: int = 2048
 
 # Lookahead: generate chunks beyond visible radius for smooth movement
 @export_range(0, 8, 1) var gen_lookahead: int = 2
@@ -97,6 +97,7 @@ var _needs_gen: Dictionary = {}
 func _ready() -> void:
 	_scenario_rid = get_world_3d().scenario
 	if not Engine.is_editor_hint():
+		_generate_initial_tiles_sync()
 		_start_gen_thread()
 
 
@@ -136,6 +137,40 @@ func _stop_gen_thread() -> void:
 	_gen_thread = null
 
 
+func _generate_initial_tiles_sync() -> void:
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.seed = int(noise_seed)
+	noise.frequency = noise_freq
+	var center := Vector2i.ZERO
+	var tiles := _generate_chunk_tiles(center, noise)
+	_persistent_tiles[center] = {}
+	for tile in tiles:
+		var type_idx: int = tile["type_index"]
+		var mesh_id: int = type_mapping[clampi(type_idx, 0, type_mapping.size() - 1)]
+		_persistent_tiles[center][tile["coords"]] = {
+			"mesh_id": mesh_id,
+			"elevation": tile["elevation"],
+			"layer": 0,
+			"custom_data": Vector4.ZERO,
+		}
+	for ring_coords in HexGridMath.cube_ring(Vector3i.ZERO, 1):
+		var cc := _get_chunk_coords(ring_coords)
+		if _persistent_tiles.has(cc):
+			continue
+		var ring_tiles := _generate_chunk_tiles(cc, noise)
+		_persistent_tiles[cc] = {}
+		for tile in ring_tiles:
+			var type_idx: int = tile["type_index"]
+			var mesh_id: int = type_mapping[clampi(type_idx, 0, type_mapping.size() - 1)]
+			_persistent_tiles[cc][tile["coords"]] = {
+				"mesh_id": mesh_id,
+				"elevation": tile["elevation"],
+				"layer": 0,
+				"custom_data": Vector4.ZERO,
+			}
+
+
 func _gen_thread_func() -> void:
 	var noise := FastNoiseLite.new()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -143,15 +178,16 @@ func _gen_thread_func() -> void:
 	noise.frequency = noise_freq
 
 	while _gen_running:
-		var work_item := Vector2i(999999, 999999)
 		_gen_work_mutex.lock()
-		if not _gen_work.is_empty():
-			work_item = _gen_work.pop_back()
-			_gen_work_set.erase(work_item)
+		var batch: Array[Vector2i] = []
+		while not _gen_work.is_empty() and batch.size() < 8:
+			var item: Vector2i = _gen_work.pop_back()
+			_gen_work_set.erase(item)
+			batch.append(item)
 		_gen_work_mutex.unlock()
 
-		if work_item == Vector2i(999999, 999999):
-			OS.delay_usec(500)
+		if batch.is_empty():
+			OS.delay_usec(50)
 			continue
 
 		var s := int(noise_seed)
@@ -160,10 +196,10 @@ func _gen_thread_func() -> void:
 		if noise_freq != noise.frequency:
 			noise.frequency = noise_freq
 
-		var tiles := _generate_chunk_tiles(work_item, noise)
-
 		_gen_result_mutex.lock()
-		_gen_results.append({"chunk_coords": work_item, "tiles": tiles})
+		for item in batch:
+			var tiles := _generate_chunk_tiles(item, noise)
+			_gen_results.append({"chunk_coords": item, "tiles": tiles})
 		_gen_result_mutex.unlock()
 
 
@@ -334,6 +370,14 @@ func _update_active_chunks() -> void:
 				var check_coords := Vector2i(camera_chunk.x + x, camera_chunk.y + y)
 				if not new_active.has(check_coords) and not _needs_gen.has(check_coords):
 					_queue_gen_work(check_coords)
+
+	# Sort gen work by distance from camera (farthest first, thread pops from back = processes closest first)
+	_gen_work_mutex.lock()
+	var cam_c: Vector2i = camera_chunk
+	_gen_work.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (a - cam_c).length_squared() > (b - cam_c).length_squared()
+	)
+	_gen_work_mutex.unlock()
 
 	# Unload chunks that are no longer active
 	var to_unload: Array[Vector2i] = []

@@ -145,7 +145,8 @@ func _make_transform(cell: HexCellData) -> Transform3D:
 	var abs_pos: Vector3 = HexGridMath.cube_to_world_flat_top(cell.coords, actual_hex_size)
 
 	if actual_flat_mode:
-		abs_pos.y = 0.0
+		var flat_y := cell.elevation * 0.05
+		abs_pos.y = flat_y
 		return Transform3D(
 			Basis(Vector3(actual_hex_size, 0, 0), Vector3(0, 1.0, 0), Vector3(0, 0, actual_hex_size)),
 			abs_pos
