@@ -144,7 +144,7 @@ func _setup_noise(noise: FastNoiseLite) -> void:
 	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	noise.fractal_octaves = 3
 	noise.fractal_lacunarity = 2.0
-	noise.fractal_gain = 0.5
+	noise.fractal_gain = 0.3
 
 
 func _generate_initial_tiles_sync() -> void:
@@ -229,16 +229,16 @@ func _generate_chunk_tiles(chunk_coords: Vector2i, noise: FastNoiseLite) -> Arra
 			var type_idx: int
 			if nval < -0.2:
 				type_idx = 1
-				elevation = _remap(nval, -1.0, -0.2, 0.15, 0.4)
+				elevation = _remap(nval, -1.0, -0.2, 0.5, 2.0)
 			elif nval > 0.5:
 				type_idx = 2
-				elevation = _remap(nval, 0.5, 1.0, 1.8, 4.0)
+				elevation = _remap(nval, 0.5, 1.0, 8.0, 16.0)
 			elif nval > 0.25:
 				type_idx = 3
-				elevation = _remap(nval, 0.25, 0.5, 1.0, 1.8)
+				elevation = _remap(nval, 0.25, 0.5, 4.0, 8.0)
 			else:
 				type_idx = 0
-				elevation = _remap(nval, -0.2, 0.25, 0.6, 1.2)
+				elevation = _remap(nval, -0.2, 0.25, 2.0, 5.0)
 
 			tiles[idx] = {
 				"coords": Vector3i(q, r, s_coord),

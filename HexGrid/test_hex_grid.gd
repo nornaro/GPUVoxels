@@ -202,13 +202,23 @@ func _handle_wasd(delta: float) -> void:
 
 
 func _handle_hover(event: InputEventMouseMotion) -> void:
-	if event.button_mask == MOUSE_BUTTON_RIGHT and _painter_mode == "":
-		if last_mouse != Vector2.INF:
+	if event.button_mask == MOUSE_BUTTON_RIGHT:
+		if _painter_mode == "" and last_mouse != Vector2.INF:
 			var delta := event.position - last_mouse
 			cam_rot_y -= delta.x * 0.3
 			cam_rot_x -= delta.y * 0.3
+			_needs_redraw = true
 		last_mouse = event.position
-		_needs_redraw = true
+		var cell := grid.raycast_hex(camera, event.position)
+		if _painter_mode != "" and cell != null:
+			var coords := cell.coords
+			if coords != _painter_last_cell:
+				_remove_painted_cell(coords)
+				_painter_last_cell = coords
+				for d in 6:
+					var n := coords + HexGridMath.cube_direction(d)
+					if _tile_overlay_type.has(n):
+						_rebuild_painted_cell(n)
 		return
 	if event.button_mask == MOUSE_BUTTON_MIDDLE:
 		if last_mouse != Vector2.INF:
@@ -374,11 +384,7 @@ func _place_block(cell: HexCellData) -> void:
 	var scale_f := block_lib.get_hex_scale(_selected_item_name)
 	var aabb: AABB = item.get("aabb", AABB())
 	var y_offset := -aabb.position.y * scale_f
-	var y: float
-	if grid.flat_mode:
-		y = y_offset
-	else:
-		y = cell.elevation + y_offset
+	var y := _get_terrain_y(cell) + y_offset
 	var rot_basis := Basis(Vector3.UP, _place_rotation + HEX_ROTATION)
 	var scaled_basis := rot_basis.scaled(Vector3(scale_f, scale_f, scale_f))
 	RenderingServer.instance_set_transform(inst, Transform3D(scaled_basis, Vector3(world_pos.x, y, world_pos.z)))
@@ -449,11 +455,7 @@ func _update_ghost(cell: HexCellData) -> void:
 	var scale_f := block_lib.get_hex_scale(_ghost_mesh_name) if not item_data.is_empty() else 1.0
 	var aabb: AABB = item_data.get("aabb", AABB()) if not item_data else AABB()
 	var y_offset := -aabb.position.y * scale_f
-	var y: float
-	if grid.flat_mode:
-		y = y_offset
-	else:
-		y = cell.elevation + y_offset
+	var y := _get_terrain_y(cell) + y_offset
 	var rot_basis := Basis(Vector3.UP, _place_rotation + HEX_ROTATION)
 	var scaled_basis := rot_basis.scaled(Vector3(scale_f, scale_f, scale_f))
 	RenderingServer.instance_set_transform(_ghost_inst, Transform3D(scaled_basis, Vector3(world_pos.x, y, world_pos.z)))
@@ -512,8 +514,8 @@ func _setup_overlay_meshes() -> void:
 	var su: PackedVector2Array = []
 	var si: PackedInt32Array = []
 	var s_half := strip_len * 0.5
-	sv.append(Vector3(-s_half, 0.0, -hw))
-	sv.append(Vector3(-s_half, 0.0, hw))
+	sv.append(Vector3(0.0, 0.0, -hw))
+	sv.append(Vector3(0.0, 0.0, hw))
 	sv.append(Vector3(s_half, 0.0, hw))
 	sv.append(Vector3(s_half, 0.0, -hw))
 	for _j in 4:
@@ -660,8 +662,8 @@ func _rebuild_painted_cell(coords: Vector3i) -> void:
 
 func _get_terrain_y(cell: HexCellData) -> float:
 	if grid.flat_mode:
-		return cell.elevation * 0.2
-	return floorf(cell.elevation) + HexGridManager._tile_jitter(cell.coords.x, cell.coords.y)
+		return cell.elevation * 0.15
+	return floorf(cell.elevation)
 
 
 func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictionary, mat: StandardMaterial3D) -> void:
