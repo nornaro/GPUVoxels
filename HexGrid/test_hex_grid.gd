@@ -1138,7 +1138,7 @@ func _setup_grid() -> void:
 	grid.tile_library = library
 	grid.camera = camera
 	grid.noise_seed = _noise_seed
-	grid.noise_freq = 0.05
+	grid.noise_freq = 0.008
 	add_child(grid)
 	grid.type_mapping = [grass_id, water_id, stone_id, dirt_id, sand_id]
 

@@ -137,11 +137,19 @@ func _stop_gen_thread() -> void:
 	_gen_thread = null
 
 
-func _generate_initial_tiles_sync() -> void:
-	var noise := FastNoiseLite.new()
+func _setup_noise(noise: FastNoiseLite) -> void:
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	noise.seed = int(noise_seed)
 	noise.frequency = noise_freq
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 3
+	noise.fractal_lacunarity = 2.0
+	noise.fractal_gain = 0.5
+
+
+func _generate_initial_tiles_sync() -> void:
+	var noise := FastNoiseLite.new()
+	_setup_noise(noise)
 	var center := Vector2i.ZERO
 	var tiles := _generate_chunk_tiles(center, noise)
 	_persistent_tiles[center] = {}
@@ -173,9 +181,7 @@ func _generate_initial_tiles_sync() -> void:
 
 func _gen_thread_func() -> void:
 	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.seed = int(noise_seed)
-	noise.frequency = noise_freq
+	_setup_noise(noise)
 
 	while _gen_running:
 		_gen_work_mutex.lock()
