@@ -510,18 +510,17 @@ func _setup_overlay_meshes() -> void:
 	darr[Mesh.ARRAY_INDEX] = di
 	RenderingServer.mesh_add_surface_from_arrays(_overlay_dot_rid, RenderingServer.PRIMITIVE_TRIANGLES, darr)
 
-	# --- Strip mesh (rectangle along +X axis, edge-to-center) ---
+	# --- Strip mesh (rectangle along +X axis, full center-to-neighbor) ---
 	var strip_len := sqrt(3.0) * HEX_SIZE
-	var hw := 0.15 * HEX_SIZE
+	var hw := 0.22 * HEX_SIZE
 	var sv: PackedVector3Array = []
 	var sn: PackedVector3Array = []
 	var su: PackedVector2Array = []
 	var si: PackedInt32Array = []
-	var s_half := strip_len * 0.5
 	sv.append(Vector3(0.0, 0.0, -hw))
 	sv.append(Vector3(0.0, 0.0, hw))
-	sv.append(Vector3(s_half, 0.0, hw))
-	sv.append(Vector3(s_half, 0.0, -hw))
+	sv.append(Vector3(strip_len, 0.0, hw))
+	sv.append(Vector3(strip_len, 0.0, -hw))
 	for _j in 4:
 		sn.append(Vector3.UP)
 	su.append_array([Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)])
@@ -535,26 +534,24 @@ func _setup_overlay_meshes() -> void:
 	sarr[Mesh.ARRAY_INDEX] = si
 	RenderingServer.mesh_add_surface_from_arrays(_overlay_strip_rid, RenderingServer.PRIMITIVE_TRIANGLES, sarr)
 
-	# --- Curved river strip mesh (S-curve along +X axis) ---
+	# --- Curved river strip mesh (S-curve along +X axis, full length) ---
 	var rv_len := sqrt(3.0) * HEX_SIZE
-	var rv_hw := 0.15 * HEX_SIZE
-	var rv_half := rv_len * 0.5
-	var rv_curve := 0.2 * HEX_SIZE
+	var rv_hw := 0.22 * HEX_SIZE
 	var rv: PackedVector3Array = []
 	var rn: PackedVector3Array = []
 	var ru: PackedVector2Array = []
 	var ri: PackedInt32Array = []
 	for i in 8:
 		var t := float(i) / 7.0
-		var x := t * rv_len - rv_half
-		var curve_z := rv_curve * sin(t * PI)
+		var x := t * rv_len
+		var curve_z := rv_hw * 0.8 * sin(t * PI)
 		rv.append(Vector3(x, 0.0, -rv_hw + curve_z))
 		rn.append(Vector3.UP)
 		ru.append(Vector2(t, 0.0))
 	for i in 8:
 		var t := float(i) / 7.0
-		var x := t * rv_len - rv_half
-		var curve_z := rv_curve * sin(t * PI)
+		var x := t * rv_len
+		var curve_z := rv_hw * 0.8 * sin(t * PI)
 		rv.append(Vector3(x, 0.0, rv_hw + curve_z))
 		rn.append(Vector3.UP)
 		ru.append(Vector2(t, 1.0))
@@ -575,15 +572,19 @@ func _setup_overlay_meshes() -> void:
 
 	# --- Materials ---
 	_road_mat = StandardMaterial3D.new()
-	_road_mat.albedo_color = Color(0.45, 0.35, 0.22, 0.9)
+	_road_mat.albedo_color = Color(0.45, 0.35, 0.22, 0.95)
 	_road_mat.roughness = 0.95
 	_road_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_road_mat.no_depth_test = true
+	_road_mat.render_priority = 1
 
 	_river_mat = StandardMaterial3D.new()
-	_river_mat.albedo_color = Color(0.2, 0.45, 0.8, 0.85)
+	_river_mat.albedo_color = Color(0.2, 0.45, 0.8, 0.9)
 	_river_mat.roughness = 0.3
 	_river_mat.metallic = 0.1
 	_river_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_river_mat.no_depth_test = true
+	_river_mat.render_priority = 1
 
 
 func _set_painter_mode(mode: String) -> void:
@@ -678,7 +679,7 @@ func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictiona
 	if cell == null:
 		return
 	var world_pos := HexGridMath.cube_to_world_flat_top(coords, HEX_SIZE)
-	var y := _get_terrain_y(cell) + 0.025
+	var y := _get_terrain_y(cell) + 0.1
 
 	var is_river: bool = flag_dict == _river_cells
 	var strip_mesh := _overlay_river_strip_rid if is_river else _overlay_strip_rid
@@ -695,17 +696,10 @@ func _build_overlay(coords: Vector3i, flag_dict: Dictionary, inst_dict: Dictiona
 		_make_overlay_inst(_overlay_dot_rid, mat, world_pos, y, 0.0, inst_dict, coords)
 		return
 
+	_make_overlay_inst(_overlay_dot_rid, mat, world_pos, y, 0.0, inst_dict, coords)
 	for d in neighbor_dirs:
 		var angle := deg_to_rad(30.0 - 60.0 * d)
 		_make_overlay_inst(strip_mesh, mat, world_pos, y, angle, inst_dict, coords)
-
-	if neighbor_dirs.size() == 2:
-		var a0 := deg_to_rad(30.0 - 60.0 * neighbor_dirs[0])
-		var a1 := deg_to_rad(30.0 - 60.0 * neighbor_dirs[1])
-		var diff := angle_difference(a0, a1)
-		if absf(diff) > deg_to_rad(60.0):
-			var bisector := a0 + diff * 0.5
-			_make_overlay_inst(_overlay_dot_rid, mat, world_pos, y, bisector, inst_dict, coords)
 
 
 func _make_overlay_inst(mesh_rid: RID, mat: StandardMaterial3D, pos: Vector3, y: float, rot_y: float, inst_dict: Dictionary, coords: Vector3i) -> void:
