@@ -7,6 +7,20 @@ const HEX_SIZE: float = 24.0
 const SUB_HEX_SIZE: float = HEX_SIZE / 3.0
 const SUB_HEX_DIST: float = HEX_SIZE * 0.57735026919
 
+# Vertex neighbors: vertex vi is shared with current hex + these two direction indices
+const VERTEX_NEIGHBORS: Array = [
+	[0, 1],  # vertex 0°: DIR_E, DIR_SE
+	[0, 5],  # vertex 60°: DIR_E, DIR_NE
+	[5, 4],  # vertex 120°: DIR_NE, DIR_NW
+	[4, 3],  # vertex 180°: DIR_NW, DIR_W
+	[3, 2],  # vertex 240°: DIR_W, DIR_SW
+	[2, 1],  # vertex 300°: DIR_SW, DIR_SE
+]
+
+# Vertex sub-hex indices: 7-12 (vertex 0-5)
+const VERTEX_OFFSET: int = 7
+const TOTAL_SUBS: int = 13  # 0=center, 1-6=ring, 7-12=vertex
+
 # Biome indices
 const BIOME_DEEP_WATER := 0
 const BIOME_WATER := 1
@@ -36,6 +50,9 @@ var noise: FastNoiseLite
 
 # Sub-hex overlay: Vector3i -> Array[int] (painted sub-hex indices 0-6)
 var river_cells: Dictionary = {}
+var road_cells: Dictionary = {}
+# Vertex sub-hexes: vertex_key -> true (shared between 3 hexes)
+var vertex_subs: Dictionary = {}  # vertex_key -> {"river": bool, "road": bool}
 var show_overlay: bool = false
 var show_grid: bool = false
 
@@ -123,20 +140,24 @@ func _process(_delta: float) -> void:
 	if _cell_exists(hex):
 		var cell: HexCellData = cells[hex]
 		var biome_name: String = BIOME_NAMES[cell.biome]
-		# Find closest sub-hex for water neighbor display
 		var best_sub := 0
 		var best_dist := INF
-		for i in 7:
+		for i in TOTAL_SUBS:
 			var d := _get_sub_hex_world_pos(hex, i).distance_to(world_pos)
 			if d < best_dist:
 				best_dist = d
 				best_sub = i
 		var wn := _count_sub_hex_water_neighbors(hex, best_sub)
-		var sub_info := ""
-		if river_cells.has(hex):
-			sub_info = "  |  River: %d/7" % river_cells[hex].size()
-		info_label.text = "Hex: (%d,%d,%d)  |  %s  |  Sub %d  |  Water nb: %d%s  |  Zoom: %.1f" % [
-			hex.x, hex.y, hex.z, biome_name, best_sub, wn, sub_info, camera_zoom
+		var sub_type := "Sub"
+		if best_sub >= VERTEX_OFFSET:
+			sub_type = "Vertex"
+		var labels := ""
+		if _is_hex_river(hex):
+			labels += "  |  RIVER(%d)" % _hex_river_count(hex)
+		if _is_hex_road(hex):
+			labels += "  |  ROAD(%d)" % _hex_road_count(hex)
+		info_label.text = "Hex: (%d,%d,%d)  |  %s  |  %s %d  |  Water nb: %d%s  |  Zoom: %.1f" % [
+			hex.x, hex.y, hex.z, biome_name, sub_type, best_sub, wn, labels, camera_zoom
 		]
 	else:
 		info_label.text = "Hex: none  |  Zoom: %.1f" % camera_zoom
@@ -256,35 +277,30 @@ func _paint_river_at(screen_pos: Vector2, erase: bool) -> void:
 	var world_pos := _screen_to_world(screen_pos)
 	var hex := _world_to_hex(world_pos)
 	if erase:
-		# Find closest sub-hex in the clicked hex and erase it
 		if _cell_exists(hex):
 			var best_sub := 0
 			var best_dist := INF
-			for i in 7:
+			for i in TOTAL_SUBS:
 				var d := _get_sub_hex_world_pos(hex, i).distance_to(world_pos)
 				if d < best_dist:
 					best_dist = d
 					best_sub = i
 			_river_erase(hex, best_sub)
 	else:
-		# Validate on the hex directly under the cursor
 		if not _cell_exists(hex):
 			queue_redraw()
 			return
-		# Find closest sub-hex within the clicked hex only
 		var best_sub := 0
 		var best_dist := INF
-		for i in 7:
+		for i in TOTAL_SUBS:
 			var d := _get_sub_hex_world_pos(hex, i).distance_to(world_pos)
 			if d < best_dist:
 				best_dist = d
 				best_sub = i
-		# Sub-hex must have 1-2 water sub-hex neighbors
 		var wn := _count_sub_hex_water_neighbors(hex, best_sub)
 		if wn < 1 or wn > 2:
 			queue_redraw()
 			return
-		# Must not push any existing river sub-hex neighbor past 2
 		for nb in _get_sub_hex_neighbors(hex, best_sub):
 			if river_cells.has(nb["hex"]) and nb["sub"] in river_cells[nb["hex"]]:
 				if _count_sub_hex_water_neighbors(nb["hex"], nb["sub"]) + 1 > 2:
@@ -295,6 +311,13 @@ func _paint_river_at(screen_pos: Vector2, erase: bool) -> void:
 
 
 func _river_paint(hex: Vector3i, sub_idx: int) -> void:
+	if sub_idx >= VERTEX_OFFSET:
+		var vi: int = sub_idx - VERTEX_OFFSET
+		var key := _vertex_key(hex, vi)
+		if not vertex_subs.has(key):
+			vertex_subs[key] = {"river": false, "road": false}
+		vertex_subs[key]["river"] = true
+		return
 	if not river_cells.has(hex):
 		river_cells[hex] = []
 	if sub_idx not in river_cells[hex]:
@@ -302,6 +325,12 @@ func _river_paint(hex: Vector3i, sub_idx: int) -> void:
 
 
 func _river_erase(hex: Vector3i, sub_idx: int) -> void:
+	if sub_idx >= VERTEX_OFFSET:
+		var vi: int = sub_idx - VERTEX_OFFSET
+		var key := _vertex_key(hex, vi)
+		if vertex_subs.has(key):
+			vertex_subs[key]["river"] = false
+		return
 	if river_cells.has(hex):
 		river_cells[hex].erase(sub_idx)
 		if river_cells[hex].is_empty():
@@ -318,7 +347,25 @@ func _count_water_neighbors(hex: Vector3i) -> int:
 	return count
 
 
+func _hex_river_count(hex: Vector3i) -> int:
+	return river_cells.get(hex, []).size()
+
+
+func _hex_road_count(hex: Vector3i) -> int:
+	return road_cells.get(hex, []).size()
+
+
+func _is_hex_river(hex: Vector3i) -> bool:
+	return _hex_river_count(hex) >= 2
+
+
+func _is_hex_road(hex: Vector3i) -> bool:
+	return _hex_road_count(hex) >= 2
+
+
 func _is_sub_hex_water(hex: Vector3i, sub_idx: int) -> bool:
+	if sub_idx >= VERTEX_OFFSET:
+		return _is_vertex_river(hex, sub_idx - VERTEX_OFFSET)
 	if not _cell_exists(hex):
 		return false
 	var c: HexCellData = cells[hex]
@@ -335,8 +382,16 @@ func _get_sub_hex_neighbors(parent_hex: Vector3i, sub_idx: int) -> Array:
 		# Center sub-hex: neighbors with all 6 ring subs
 		for i in 6:
 			result.append({"hex": parent_hex, "sub": i + 1})
+	elif sub_idx >= VERTEX_OFFSET:
+		# Vertex sub-hex vi: neighbors with the 2 adjacent ring subs
+		var vi: int = sub_idx - VERTEX_OFFSET
+		# Ring sub on each side of this vertex
+		var ring_a: int = ((vi + 5) % 6) + 1
+		var ring_b: int = (vi % 6) + 1
+		result.append({"hex": parent_hex, "sub": ring_a})
+		result.append({"hex": parent_hex, "sub": ring_b})
 	else:
-		# Ring sub-hex i: center + 2 adjacent ring + 1 cross-hex
+		# Ring sub-hex i (1-6): center + 2 adjacent ring + 1 cross-hex + 2 vertex
 		result.append({"hex": parent_hex, "sub": 0})
 		# Adjacent ring subs within same hex
 		var prev_sub: int = ((sub_idx - 2) % 6) + 1
@@ -348,6 +403,11 @@ func _get_sub_hex_neighbors(parent_hex: Vector3i, sub_idx: int) -> Array:
 		var opp_sub: int = ((sub_idx + 2) % 6) + 1
 		var neighbor_hex: Vector3i = parent_hex + HexGridMath.cube_direction(dir)
 		result.append({"hex": neighbor_hex, "sub": opp_sub})
+		# Vertex sub-hexes on each side of this ring sub
+		var vi_a: int = sub_idx - 1  # vertex at angle 60°*(sub_idx-1)
+		var vi_b: int = sub_idx % 6  # vertex at angle 60°*sub_idx
+		result.append({"hex": parent_hex, "sub": VERTEX_OFFSET + vi_a})
+		result.append({"hex": parent_hex, "sub": VERTEX_OFFSET + vi_b})
 	return result
 
 
@@ -360,6 +420,8 @@ func _count_sub_hex_water_neighbors(parent_hex: Vector3i, sub_idx: int) -> int:
 
 
 func _can_place_river(hex: Vector3i, sub_idx: int) -> Array:
+	if sub_idx >= VERTEX_OFFSET:
+		return _can_place_river_vertex(hex, sub_idx - VERTEX_OFFSET)
 	if not _cell_exists(hex):
 		return [false, "No terrain"]
 	if river_cells.has(hex) and sub_idx in river_cells[hex]:
@@ -374,6 +436,36 @@ func _can_place_river(hex: Vector3i, sub_idx: int) -> Array:
 			if _count_sub_hex_water_neighbors(nb["hex"], nb["sub"]) + 1 > 2:
 				return [false, "Would overflow nb"]
 	return [true, "OK"]
+
+
+func _can_place_river_vertex(hex: Vector3i, vi: int) -> Array:
+	var key := _vertex_key(hex, vi)
+	var vdata := _get_vertex_data(key)
+	if vdata["river"]:
+		return [true, ""]
+	# Vertex neighbors: the 2 adjacent ring subs
+	var ring_a: int = ((vi + 5) % 6) + 1
+	var ring_b: int = (vi % 6) + 1
+	var wn := 0
+	if _is_sub_hex_water(hex, ring_a):
+		wn += 1
+	if _is_sub_hex_water(hex, ring_b):
+		wn += 1
+	if wn < 1:
+		return [false, "No water nb (%d)" % wn]
+	# Check accumulation: placing vertex must not push ring subs past 2
+	for ring_sub in [ring_a, ring_b]:
+		if river_cells.has(hex) and ring_sub in river_cells[hex]:
+			if _count_sub_hex_water_neighbors(hex, ring_sub) + 1 > 2:
+				return [false, "Would overflow nb"]
+	return [true, "OK"]
+
+
+func _road_paint(hex: Vector3i, sub_idx: int) -> void:
+	if not road_cells.has(hex):
+		road_cells[hex] = []
+	if sub_idx not in road_cells[hex]:
+		road_cells[hex].append(sub_idx)
 
 
 func _place_road_at(screen_pos: Vector2) -> void:
@@ -391,6 +483,20 @@ func _place_road_at(screen_pos: Vector2) -> void:
 			var path := HexGridMath.cube_line(road_start, hex)
 			for i in range(path.size() - 1):
 				roads.append({"from": path[i], "to": path[i + 1]})
+				# Store sub-hex data for road rendering
+				var from_hex: Vector3i = path[i]
+				var to_hex: Vector3i = path[i + 1]
+				_road_paint(from_hex, 0)  # center of from
+				_road_paint(to_hex, 0)    # center of to
+				var diff := to_hex - from_hex
+				for d in 6:
+					if HexGridMath.cube_direction(d) == diff:
+						var exit_sub: int = ((6 - d) % 6) + 1
+						_road_paint(from_hex, exit_sub)
+						var entry_dir: int = (d + 3) % 6
+						var entry_sub: int = ((6 - entry_dir) % 6) + 1
+						_road_paint(to_hex, entry_sub)
+						break
 		road_start = Vector3i(999999, 999999, -1999998)
 		queue_redraw()
 
@@ -455,13 +561,47 @@ func _get_sub_hex_world_pos(parent_hex: Vector3i, sub_idx: int) -> Vector2:
 	var parent_2d := Vector2(parent_world.x, parent_world.z)
 	if sub_idx == 0:
 		return parent_2d
-	# Flat-top neighbor angles: 30°, 90°, 150°, 210°, 270°, 330°
-	var angle := deg_to_rad(30.0 + 60.0 * float(sub_idx - 1))
-	return parent_2d + Vector2(cos(angle), sin(angle)) * SUB_HEX_DIST
+	elif sub_idx >= VERTEX_OFFSET:
+		# Vertex sub-hex at hex corner (distance HEX_SIZE from center)
+		var vi: int = sub_idx - VERTEX_OFFSET
+		var angle := deg_to_rad(60.0 * float(vi))
+		return parent_2d + Vector2(cos(angle), sin(angle)) * HEX_SIZE
+	else:
+		# Ring sub-hex at edge midpoint (distance SUB_HEX_DIST from center)
+		var angle := deg_to_rad(30.0 + 60.0 * float(sub_idx - 1))
+		return parent_2d + Vector2(cos(angle), sin(angle)) * SUB_HEX_DIST
 
 
 func _get_sub_hex_screen_pos(parent_hex: Vector3i, sub_idx: int) -> Vector2:
 	return _world_to_screen(_get_sub_hex_world_pos(parent_hex, sub_idx))
+
+
+func _vertex_key(hex: Vector3i, vi: int) -> String:
+	var dirs: Array = VERTEX_NEIGHBORS[vi]
+	var h1 := hex
+	var h2 := hex + HexGridMath.cube_direction(dirs[0])
+	var h3 := hex + HexGridMath.cube_direction(dirs[1])
+	var hexes := [h1, h2, h3]
+	hexes.sort()
+	return "%d,%d,%d|%d,%d,%d|%d,%d,%d" % [
+		hexes[0].x, hexes[0].y, hexes[0].z,
+		hexes[1].x, hexes[1].y, hexes[1].z,
+		hexes[2].x, hexes[2].y, hexes[2].z
+	]
+
+
+func _get_vertex_data(key: String) -> Dictionary:
+	if vertex_subs.has(key):
+		return vertex_subs[key]
+	return {"river": false, "road": false}
+
+
+func _is_vertex_river(hex: Vector3i, vi: int) -> bool:
+	return _get_vertex_data(_vertex_key(hex, vi))["river"]
+
+
+func _is_vertex_road(hex: Vector3i, vi: int) -> bool:
+	return _get_vertex_data(_vertex_key(hex, vi))["road"]
 
 
 # ============================================================================
@@ -553,6 +693,11 @@ func _draw() -> void:
 	for hex in river_cells:
 		_draw_river_hex(hex)
 
+	# Draw vertex rivers
+	for key in vertex_subs:
+		if vertex_subs[key]["river"]:
+			_draw_vertex_river(key)
+
 	# Draw roads (segment by segment)
 	for road in roads:
 		_draw_road_line(road["from"], road["to"])
@@ -563,11 +708,9 @@ func _draw() -> void:
 		var mouse_world := _screen_to_world(mouse_screen)
 		var mouse_hex := _world_to_hex(mouse_world)
 		if _cell_exists(mouse_hex):
-			# Preview path step-by-step
 			var path := HexGridMath.cube_line(road_start, mouse_hex)
 			for i in range(path.size() - 1):
 				_draw_road_line(path[i], path[i + 1], Color(1, 1, 0.5, 0.4))
-		# Highlight start
 		var start_screen := _world_to_screen(Vector2(cells[road_start].get_world_position(HEX_SIZE)))
 		draw_circle(start_screen, 6.0, Color(1, 1, 0.2, 0.8))
 
@@ -585,17 +728,18 @@ func _draw_river_debug() -> void:
 	# Find closest sub-hex
 	var best_sub := 0
 	var best_dist := INF
-	for i in 7:
+	for i in TOTAL_SUBS:
 		var d := _get_sub_hex_world_pos(hex, i).distance_to(mouse_world)
 		if d < best_dist:
 			best_dist = d
 			best_sub = i
-	# Draw all 7 sub-hexes with green/red
-	for i in 7:
+	# Draw all 13 sub-hexes with green/red
+	for i in TOTAL_SUBS:
 		var result: Array = _can_place_river(hex, i)
 		var ok: bool = result[0]
 		var sub_screen := _get_sub_hex_screen_pos(hex, i)
-		var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
+		var sz := SUB_HEX_SIZE * camera_zoom
+		var sub_corners := _hex_corners(sub_screen, sz)
 		if ok:
 			var fill := Color(0.2, 0.8, 0.2, 0.25)
 			if i == best_sub:
@@ -626,14 +770,12 @@ func _draw_river_debug() -> void:
 func _draw_sub_hex_overlay(hex: Vector3i) -> void:
 	if not _cell_exists(hex):
 		return
-	var color := BIOME_COLORS[cells[hex].biome]
-	for i in 7:
+	for i in TOTAL_SUBS:
 		var sub_screen := _get_sub_hex_screen_pos(hex, i)
-		var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
-		# Transparent fill
-		var fill := Color(color.r, color.g, color.b, 0.05)
+		var sz := SUB_HEX_SIZE * camera_zoom
+		var sub_corners := _hex_corners(sub_screen, sz)
+		var fill := Color(1, 1, 1, 0.05)
 		draw_colored_polygon(sub_corners, fill)
-		# Outline
 		draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), Color(1, 1, 1, 0.2), 1.0)
 
 
@@ -645,6 +787,25 @@ func _draw_river_hex(hex: Vector3i) -> void:
 		var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
 		draw_colored_polygon(sub_corners, Color(0.2, 0.45, 0.75, 0.7))
 		draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), Color(0.15, 0.3, 0.6, 0.9), 1.5)
+
+
+func _draw_vertex_river(key: String) -> void:
+	# Parse key to get hex and vi, then draw at that position
+	# For simplicity, find the hex and vertex from the key
+	var parts := key.split("|")
+	if parts.size() < 3:
+		return
+	# Use first hex in the key to compute vertex position
+	var coords := parts[0].split(",")
+	var hex := Vector3i(int(coords[0]), int(coords[1]), int(coords[2]))
+	# Find which vertex this is by checking all 6
+	for vi in 6:
+		if _vertex_key(hex, vi) == key:
+			var sub_screen := _get_sub_hex_screen_pos(hex, VERTEX_OFFSET + vi)
+			var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
+			draw_colored_polygon(sub_corners, Color(0.2, 0.45, 0.75, 0.7))
+			draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), Color(0.15, 0.3, 0.6, 0.9), 1.5)
+			return
 
 
 func _draw_road_line(from_hex: Vector3i, to_hex: Vector3i, col: Color = Color(0.6, 0.35, 0.15, 0.9)) -> void:
