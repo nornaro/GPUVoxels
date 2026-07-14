@@ -151,13 +151,14 @@ func _process(_delta: float) -> void:
 		var sub_type := "Sub"
 		if best_sub >= VERTEX_OFFSET:
 			sub_type = "Vertex"
+		var sub_h: float = cell.sub_heights[best_sub]
 		var labels := ""
 		if _is_hex_river(hex):
 			labels += "  |  RIVER(%d)" % _hex_river_count(hex)
 		if _is_hex_road(hex):
 			labels += "  |  ROAD(%d)" % _hex_road_count(hex)
-		info_label.text = "Hex: (%d,%d,%d)  |  %s  |  %s %d  |  Water nb: %d%s  |  Zoom: %.1f" % [
-			hex.x, hex.y, hex.z, biome_name, sub_type, best_sub, wn, labels, camera_zoom
+		info_label.text = "Hex: (%d,%d,%d)  |  %s  |  %s %d  |  H: %.1f (avg %.1f)  |  Water nb: %d%s  |  Zoom: %.1f" % [
+			hex.x, hex.y, hex.z, biome_name, sub_type, best_sub, sub_h, cell.elevation, wn, labels, camera_zoom
 		]
 	else:
 		info_label.text = "Hex: none  |  Zoom: %.1f" % camera_zoom
@@ -317,11 +318,16 @@ func _river_paint(hex: Vector3i, sub_idx: int) -> void:
 		if not vertex_subs.has(key):
 			vertex_subs[key] = {"river": false, "road": false}
 		vertex_subs[key]["river"] = true
+		vertex_subs[key]["road"] = false
 		return
 	if not river_cells.has(hex):
 		river_cells[hex] = []
 	if sub_idx not in river_cells[hex]:
 		river_cells[hex].append(sub_idx)
+	if road_cells.has(hex) and sub_idx in road_cells[hex]:
+		road_cells[hex].erase(sub_idx)
+		if road_cells[hex].is_empty():
+			road_cells.erase(hex)
 
 
 func _river_erase(hex: Vector3i, sub_idx: int) -> void:
@@ -461,7 +467,22 @@ func _can_place_river_vertex(hex: Vector3i, vi: int) -> Array:
 	return [true, "OK"]
 
 
+func _is_sub_hex_river(hex: Vector3i, sub_idx: int) -> bool:
+	if sub_idx >= VERTEX_OFFSET:
+		return _is_vertex_river(hex, sub_idx - VERTEX_OFFSET)
+	return river_cells.has(hex) and sub_idx in river_cells[hex]
+
+
 func _road_paint(hex: Vector3i, sub_idx: int) -> void:
+	if _is_sub_hex_water(hex, sub_idx):
+		return
+	if sub_idx >= VERTEX_OFFSET:
+		var vi: int = sub_idx - VERTEX_OFFSET
+		var key := _vertex_key(hex, vi)
+		if not vertex_subs.has(key):
+			vertex_subs[key] = {"river": false, "road": false}
+		vertex_subs[key]["road"] = true
+		return
 	if not road_cells.has(hex):
 		road_cells[hex] = []
 	if sub_idx not in road_cells[hex]:
@@ -534,6 +555,15 @@ func _get_or_create_cell(hex: Vector3i) -> HexCellData:
 	var biome := _elevation_to_biome(elevation)
 	var cell := HexCellData.new(hex, biome, elevation)
 	cell.color = BIOME_COLORS[biome]
+	# Compute sub-hex heights from noise at each sub-hex world position, rounded to 0.1
+	var sum := 0.0
+	for i in TOTAL_SUBS:
+		var sub_world := _get_sub_hex_world_pos(hex, i)
+		var h := noise.get_noise_2d(sub_world.x, sub_world.y)
+		cell.sub_heights[i] = snappedf(h, 0.1)
+		sum += cell.sub_heights[i]
+	# Cell elevation = average of sub-hex heights, rounded to 0.1
+	cell.elevation = snappedf(sum / float(TOTAL_SUBS), 0.1)
 	cells[hex] = cell
 	return cell
 
@@ -819,20 +849,20 @@ func _draw_road_line(from_hex: Vector3i, to_hex: Vector3i, col: Color = Color(0.
 			dir = d
 			break
 
-	# Draw center sub-hex of from_hex
-	_draw_filled_sub(from_hex, 0, col)
+	if not _is_sub_hex_water(from_hex, 0):
+		_draw_filled_sub(from_hex, 0, col)
 
 	if dir >= 0:
-		# Draw exit sub-hex of from_hex
 		var exit_sub := ((6 - dir) % 6) + 1
-		_draw_filled_sub(from_hex, exit_sub, col)
-		# Draw entry sub-hex of to_hex
+		if not _is_sub_hex_water(from_hex, exit_sub):
+			_draw_filled_sub(from_hex, exit_sub, col)
 		var entry_dir := (dir + 3) % 6
 		var entry_sub := ((6 - entry_dir) % 6) + 1
-		_draw_filled_sub(to_hex, entry_sub, col)
+		if not _is_sub_hex_water(to_hex, entry_sub):
+			_draw_filled_sub(to_hex, entry_sub, col)
 
-	# Draw center sub-hex of to_hex
-	_draw_filled_sub(to_hex, 0, col)
+	if not _is_sub_hex_water(to_hex, 0):
+		_draw_filled_sub(to_hex, 0, col)
 
 
 func _draw_filled_sub(hex: Vector3i, sub_idx: int, col: Color) -> void:
