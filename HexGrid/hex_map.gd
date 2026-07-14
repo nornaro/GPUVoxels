@@ -28,8 +28,9 @@ const BIOME_BEACH := 2
 const BIOME_GRASS := 3
 const BIOME_DIRT := 4
 const BIOME_STONE := 5
+const BIOME_LAKE := 6
 
-const BIOME_NAMES := ["Deep Water", "Water", "Beach", "Grass", "Dirt", "Stone"]
+const BIOME_NAMES := ["Deep Water", "Water", "Beach", "Grass", "Dirt", "Stone", "Lake"]
 
 var BIOME_COLORS: Array[Color] = [
 	Color(0.18, 0.35, 0.65),  # deep water
@@ -38,7 +39,11 @@ var BIOME_COLORS: Array[Color] = [
 	Color(0.35, 0.55, 0.28),  # grass
 	Color(0.55, 0.42, 0.28),  # dirt
 	Color(0.48, 0.48, 0.48),  # stone
+	Color(0.32, 0.55, 0.82),  # lake
 ]
+
+const WATER_LEVEL: float = -0.3
+const LAKE_LEVEL: float = -0.2
 
 # ============================================================================
 # STATE
@@ -369,7 +374,7 @@ func _count_water_neighbors(hex: Vector3i) -> int:
 	for n in HexGridMath.cube_neighbors(hex):
 		if _cell_exists(n):
 			var c: HexCellData = cells[n]
-			if c.biome == BIOME_WATER or c.biome == BIOME_DEEP_WATER or river_cells.has(n):
+			if _is_water_biome(c.biome) or river_cells.has(n):
 				count += 1
 	return count
 
@@ -396,7 +401,7 @@ func _is_sub_hex_water(hex: Vector3i, sub_idx: int) -> bool:
 	if not _cell_exists(hex):
 		return false
 	var c: HexCellData = cells[hex]
-	if c.biome == BIOME_WATER or c.biome == BIOME_DEEP_WATER:
+	if _is_water_biome(c.biome):
 		return true
 	if river_cells.has(hex) and sub_idx in river_cells[hex]:
 		return true
@@ -630,12 +635,10 @@ func _ensure_chunk_rivers(chunk_origin: Vector2i) -> void:
 			_create_cell_only(hex)
 
 	# Also include immediate neighbors for flow paths
-	var extended: Array[Vector3i] = []
 	for hex in cells_in_chunk:
 		for nb in HexGridMath.cube_neighbors(hex):
 			if not _cell_exists(nb):
 				_create_cell_only(nb)
-			extended.append(nb)
 
 	# Find elevation threshold for top 15%
 	var elevations: Array[float] = []
@@ -647,37 +650,37 @@ func _ensure_chunk_rivers(chunk_origin: Vector2i) -> void:
 		threshold_idx = elevations.size() - 1
 	var threshold: float = elevations[threshold_idx]
 
-	# Collect candidate source cells (above threshold, not water, not adjacent to water)
+	# Collect candidate source cells
 	var candidates: Array[Vector3i] = []
 	for hex in cells_in_chunk:
 		var c: HexCellData = cells[hex]
-		if c.elevation >= threshold and c.biome != BIOME_WATER and c.biome != BIOME_DEEP_WATER:
+		if c.elevation >= threshold and not _is_water_biome(c.biome):
 			var adj_water: bool = false
 			for nb in HexGridMath.cube_neighbors(hex):
-				if _cell_exists(nb) and (cells[nb].biome == BIOME_WATER or cells[nb].biome == BIOME_DEEP_WATER):
+				if _cell_exists(nb) and _is_water_biome(cells[nb].biome):
 					adj_water = true
 					break
 			if not adj_water:
 				candidates.append(hex)
 
-	# Shuffle candidates and try to place rivers
 	candidates.shuffle()
+	var chunk_paths: Array[Array] = []
 	var rivers_placed: int = 0
 	for source in candidates:
 		if rivers_placed >= MAX_RIVERS_PER_CHUNK:
 			break
 		var path := _flow_river(source)
 		if path.size() >= 3:
-			var end_hex: Vector3i = path[-1]
-			var end_cell: HexCellData = cells[end_hex]
-			var reached_water: bool = end_cell.biome == BIOME_WATER or end_cell.biome == BIOME_DEEP_WATER
+			var end_cell: HexCellData = cells[path[-1]]
+			var reached_water: bool = _is_water_biome(end_cell.biome)
 			if not reached_water:
-				var basin := _flood_fill_basin(end_hex)
+				var basin := _flood_fill_basin(path[-1])
 				if basin.size() >= MIN_LAKE_SIZE:
 					for whex in basin:
 						var wc: HexCellData = cells[whex]
-						wc.biome = BIOME_WATER
-						wc.color = BIOME_COLORS[BIOME_WATER]
+						wc.biome = BIOME_LAKE
+						wc.color = BIOME_COLORS[BIOME_LAKE]
+						_set_flat_water_heights(wc, LAKE_LEVEL)
 						river_cells.erase(whex)
 						road_cells.erase(whex)
 						for vi in 6:
@@ -685,7 +688,141 @@ func _ensure_chunk_rivers(chunk_origin: Vector2i) -> void:
 							if vertex_subs.has(vkey):
 								vertex_subs[vkey] = {"river": false, "road": false}
 			_paint_river_path(path)
+			chunk_paths.append(path)
 			rivers_placed += 1
+
+	_post_process_rivers(chunk_paths, cells_in_chunk)
+
+
+func _is_water_biome(biome: int) -> bool:
+	return biome == BIOME_WATER or biome == BIOME_DEEP_WATER or biome == BIOME_LAKE
+
+
+func _set_flat_water_heights(cell: HexCellData, level: float) -> void:
+	for i in TOTAL_SUBS:
+		cell.sub_heights[i] = snappedf(level, 0.1)
+	cell.elevation = snappedf(level, 0.1)
+
+
+func _post_process_rivers(chunk_paths: Array[Array], cells_in_chunk: Array[Vector3i]) -> void:
+	if chunk_paths.is_empty():
+		return
+
+	var total_len: int = 0
+	for p in chunk_paths:
+		total_len += p.size()
+	var avg_len: float = float(total_len) / float(chunk_paths.size())
+
+	# Step 1-3: Process each river
+	for path in chunk_paths:
+		var end_cell: HexCellData = cells[path[-1]]
+		var reaches_water: bool = _is_water_biome(end_cell.biome)
+		if not reaches_water or float(path.size()) <= avg_len:
+			_undo_river_path(path)
+		else:
+			_convert_river_to_water(path)
+
+	# Step 4: Tiles with 5+ water neighbors become water
+	var to_water: Array[Vector3i] = []
+	for hex in cells_in_chunk:
+		if not _cell_exists(hex):
+			continue
+		if _is_water_biome(cells[hex].biome):
+			continue
+		var wn := 0
+		for nb in HexGridMath.cube_neighbors(hex):
+			if _cell_exists(nb) and _is_water_biome(cells[nb].biome):
+				wn += 1
+		if wn >= 5:
+			to_water.append(hex)
+	for hex in to_water:
+		var c: HexCellData = cells[hex]
+		c.biome = BIOME_WATER
+		c.color = BIOME_COLORS[BIOME_WATER]
+		_set_flat_water_heights(c, WATER_LEVEL)
+		river_cells.erase(hex)
+		road_cells.erase(hex)
+		for vi in 6:
+			var vkey := _vertex_key(hex, vi)
+			if vertex_subs.has(vkey):
+				vertex_subs[vkey] = {"river": false, "road": false}
+
+	# Step 5: Flood-fill from existing ocean/deep water to mark lake tiles
+	var ocean_connected: Dictionary = {}
+	var queue: Array[Vector3i] = []
+	for hex in cells_in_chunk:
+		if not _cell_exists(hex):
+			continue
+		if cells[hex].biome == BIOME_DEEP_WATER:
+			ocean_connected[hex] = true
+			queue.append(hex)
+	for hex in cells_in_chunk:
+		if not _cell_exists(hex):
+			continue
+		if cells[hex].biome == BIOME_WATER and not ocean_connected.has(hex):
+			var adj_ocean: bool = false
+			for nb in HexGridMath.cube_neighbors(hex):
+				if _cell_exists(nb) and cells[nb].biome == BIOME_DEEP_WATER:
+					adj_ocean = true
+					break
+			if adj_ocean:
+				ocean_connected[hex] = true
+				queue.append(hex)
+	while queue.size() > 0:
+		var h: Vector3i = queue.pop_back()
+		for nb in HexGridMath.cube_neighbors(h):
+			if ocean_connected.has(nb):
+				continue
+			if not _cell_exists(nb):
+				continue
+			if cells[nb].biome == BIOME_WATER:
+				ocean_connected[nb] = true
+				queue.append(nb)
+	for hex in cells_in_chunk:
+		if ocean_connected.has(hex):
+			continue
+		if not _cell_exists(hex):
+			continue
+		var c: HexCellData = cells[hex]
+		if c.biome == BIOME_WATER:
+			c.biome = BIOME_LAKE
+			c.color = BIOME_COLORS[BIOME_LAKE]
+			_set_flat_water_heights(c, LAKE_LEVEL)
+
+
+func _undo_river_path(path: Array[Vector3i]) -> void:
+	for idx in path.size():
+		var hex: Vector3i = path[idx]
+		if not _cell_exists(hex):
+			continue
+		if _is_water_biome(cells[hex].biome):
+			continue
+		_river_erase(hex, 0)
+		if idx < path.size() - 1:
+			var diff: Vector3i = path[idx + 1] - hex
+			for d in 6:
+				if HexGridMath.cube_direction(d) == diff:
+					_river_erase(hex, ((6 - d) % 6) + 1)
+					break
+		if idx > 0:
+			var diff: Vector3i = hex - path[idx - 1]
+			for d in 6:
+				if HexGridMath.cube_direction(d) == diff:
+					var entry_dir: int = (d + 3) % 6
+					_river_erase(hex, ((6 - entry_dir) % 6) + 1)
+					break
+
+
+func _convert_river_to_water(path: Array[Vector3i]) -> void:
+	for hex in path:
+		if not _cell_exists(hex):
+			continue
+		if _is_water_biome(cells[hex].biome):
+			continue
+		var c: HexCellData = cells[hex]
+		c.biome = BIOME_WATER
+		c.color = BIOME_COLORS[BIOME_WATER]
+		_set_flat_water_heights(c, WATER_LEVEL)
 
 
 func _flood_fill_basin(start: Vector3i) -> Array[Vector3i]:
@@ -705,7 +842,7 @@ func _flood_fill_basin(start: Vector3i) -> Array[Vector3i]:
 			if not _cell_exists(nb):
 				continue
 			var nc: HexCellData = cells[nb]
-			if nc.biome == BIOME_WATER or nc.biome == BIOME_DEEP_WATER:
+			if _is_water_biome(nc.biome):
 				continue
 			if nc.elevation <= max_elev:
 				visited[nb] = true
@@ -715,7 +852,7 @@ func _flood_fill_basin(start: Vector3i) -> Array[Vector3i]:
 
 func _flow_river(start: Vector3i) -> Array[Vector3i]:
 	# Follow steepest descent. If stuck in basin, use Dijkstra to escape.
-	if _cell_exists(start) and (cells[start].biome == BIOME_WATER or cells[start].biome == BIOME_DEEP_WATER):
+	if _cell_exists(start) and _is_water_biome(cells[start].biome):
 		return []
 
 	var path: Array[Vector3i] = [start]
@@ -727,7 +864,7 @@ func _flow_river(start: Vector3i) -> Array[Vector3i]:
 	for _step in MAX_STEPS:
 		var c: HexCellData = cells[current]
 
-		if c.biome == BIOME_WATER or c.biome == BIOME_DEEP_WATER:
+		if _is_water_biome(c.biome):
 			return path
 
 		# Gather neighbors sorted by elevation (lowest first)
@@ -762,7 +899,7 @@ func _flow_river(start: Vector3i) -> Array[Vector3i]:
 				visited[nh] = true
 				path.append(nh)
 				current = nh
-				if cells[current].biome == BIOME_WATER or cells[current].biome == BIOME_DEEP_WATER:
+				if _is_water_biome(cells[current].biome):
 					return path
 		else:
 			# Truly stuck, stop here
@@ -800,7 +937,7 @@ func _flow_escape_basin(from: Vector3i, global_visited: Dictionary, up_penalty: 
 
 		var c_cell: HexCellData = cells[current]
 
-		if c_cell.biome == BIOME_WATER or c_cell.biome == BIOME_DEEP_WATER:
+		if _is_water_biome(c_cell.biome):
 			var result: Array[Vector3i] = [current]
 			var trace := current
 			while came_from.has(trace):
@@ -849,7 +986,7 @@ func _paint_river_path(path: Array[Vector3i]) -> void:
 		if not _cell_exists(hex):
 			continue
 		var c: HexCellData = cells[hex]
-		if c.biome == BIOME_WATER or c.biome == BIOME_DEEP_WATER:
+		if _is_water_biome(c.biome):
 			continue
 		_river_paint(hex, 0)
 		if idx < path.size() - 1:
