@@ -47,6 +47,7 @@ var camera_pos: Vector2 = Vector2.ZERO
 var camera_zoom: float = 1.0
 var cells: Dictionary = {}  # Vector3i -> HexCellData
 var noise: FastNoiseLite
+var detail_noise: FastNoiseLite
 
 # Sub-hex overlay: Vector3i -> Array[int] (painted sub-hex indices 0-6)
 var river_cells: Dictionary = {}
@@ -105,9 +106,18 @@ func _setup_noise() -> void:
 	noise.seed = noise_seed
 	noise.frequency = noise_freq
 	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	noise.fractal_octaves = 3
+	noise.fractal_octaves = 5
 	noise.fractal_lacunarity = 2.0
-	noise.fractal_gain = 0.3
+	noise.fractal_gain = 0.5
+
+	detail_noise = FastNoiseLite.new()
+	detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	detail_noise.seed = noise_seed + 1000
+	detail_noise.frequency = noise_freq * 4.0
+	detail_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	detail_noise.fractal_octaves = 3
+	detail_noise.fractal_lacunarity = 2.0
+	detail_noise.fractal_gain = 0.4
 
 
 func _setup_ui() -> void:
@@ -574,8 +584,8 @@ func _create_cell_only(hex: Vector3i) -> HexCellData:
 	var sum := 0.0
 	for i in TOTAL_SUBS:
 		var sub_world := _get_sub_hex_world_pos(hex, i)
-		var h := noise.get_noise_2d(sub_world.x, sub_world.y)
-		cell.sub_heights[i] = snappedf(h, 0.1)
+		var detail := detail_noise.get_noise_2d(sub_world.x, sub_world.y) * 0.15
+		cell.sub_heights[i] = snappedf(elevation + detail, 0.1)
 		sum += cell.sub_heights[i]
 	cell.elevation = snappedf(sum / float(TOTAL_SUBS), 0.1)
 	cells[hex] = cell
