@@ -55,6 +55,7 @@ var road_cells: Dictionary = {}
 var vertex_subs: Dictionary = {}  # vertex_key -> {"river": bool, "road": bool}
 var show_overlay: bool = false
 var show_grid: bool = false
+var show_height: bool = false
 
 # Roads: Array of {from: Vector3i, to: Vector3i}
 var roads: Array[Dictionary] = []
@@ -83,7 +84,13 @@ const VIEW_MARGIN: float = 100.0
 
 # Noise
 var noise_seed: int = 42
-var noise_freq: float = 0.04
+var noise_freq: float = 0.008
+
+# Chunk-based river generation
+var chunks_with_rivers: Dictionary = {}  # chunk_key -> true
+const CHUNK_SIZE: int = 10  # hexes per chunk side
+const RIVER_SOURCE_PERCENTILE: float = 0.85  # top 15%
+const MAX_RIVERS_PER_CHUNK: int = 2
 
 
 func _ready() -> void:
@@ -130,7 +137,7 @@ func _setup_ui() -> void:
 
 func _update_ui() -> void:
 	tool_label.text = "Tool: %s [1/2/3]" % TOOL_NAMES[tool_mode]
-	info_label.text = "Pan: WASD/MMB | Zoom: Scroll | Grid: G | Overlay: H | Esc: Cancel"
+	info_label.text = "Pan: WASD/MMB | Zoom: Scroll | Grid: G | Overlay: H | Height: V | Esc: Cancel"
 
 
 func _process(_delta: float) -> void:
@@ -265,6 +272,9 @@ func _handle_key(event: InputEventKey) -> void:
 			queue_redraw()
 		KEY_G:
 			show_grid = not show_grid
+			queue_redraw()
+		KEY_V:
+			show_height = not show_height
 			queue_redraw()
 		KEY_ESCAPE:
 			tool_mode = 0
@@ -551,36 +561,216 @@ func _cell_exists(hex: Vector3i) -> bool:
 func _get_or_create_cell(hex: Vector3i) -> HexCellData:
 	if cells.has(hex):
 		return cells[hex]
+	return _create_cell_only(hex)
+
+
+func _create_cell_only(hex: Vector3i) -> HexCellData:
+	if cells.has(hex):
+		return cells[hex]
 	var elevation := noise.get_noise_2d(float(hex.x), float(hex.y))
 	var biome := _elevation_to_biome(elevation)
 	var cell := HexCellData.new(hex, biome, elevation)
 	cell.color = BIOME_COLORS[biome]
-	# Compute sub-hex heights from noise at each sub-hex world position, rounded to 0.1
 	var sum := 0.0
 	for i in TOTAL_SUBS:
 		var sub_world := _get_sub_hex_world_pos(hex, i)
 		var h := noise.get_noise_2d(sub_world.x, sub_world.y)
 		cell.sub_heights[i] = snappedf(h, 0.1)
 		sum += cell.sub_heights[i]
-	# Cell elevation = average of sub-hex heights, rounded to 0.1
 	cell.elevation = snappedf(sum / float(TOTAL_SUBS), 0.1)
 	cells[hex] = cell
 	return cell
 
 
 func _elevation_to_biome(n: float) -> int:
-	if n < -0.3:
+	if n < -0.5:
 		return BIOME_DEEP_WATER
-	elif n < -0.1:
+	elif n < -0.3:
 		return BIOME_WATER
-	elif n < 0.1:
+	elif n < -0.15:
 		return BIOME_BEACH
-	elif n < 0.4:
+	elif n < 0.2:
 		return BIOME_GRASS
-	elif n < 0.6:
+	elif n < 0.4:
 		return BIOME_DIRT
 	else:
 		return BIOME_STONE
+
+
+# ============================================================================
+# CHUNK RIVER GENERATION
+# ============================================================================
+func _chunk_key(hex: Vector3i) -> Vector2i:
+	return Vector2i(floori(float(hex.x) / CHUNK_SIZE), floori(float(hex.y) / CHUNK_SIZE))
+
+
+func _ensure_chunk_rivers(chunk_origin: Vector2i) -> void:
+	var key := chunk_origin
+	if chunks_with_rivers.has(key):
+		return
+	chunks_with_rivers[key] = true
+
+	# Generate all cells in this chunk first
+	var cells_in_chunk: Array[Vector3i] = []
+	for q in range(chunk_origin.x * CHUNK_SIZE, (chunk_origin.x + 1) * CHUNK_SIZE):
+		for r in range(chunk_origin.y * CHUNK_SIZE, (chunk_origin.y + 1) * CHUNK_SIZE):
+			var hex := Vector3i(q, r, -q - r)
+			cells_in_chunk.append(hex)
+			_create_cell_only(hex)
+
+	# Also include immediate neighbors for flow paths
+	var extended: Array[Vector3i] = []
+	for hex in cells_in_chunk:
+		for nb in HexGridMath.cube_neighbors(hex):
+			if not _cell_exists(nb):
+				_create_cell_only(nb)
+			extended.append(nb)
+
+	# Find elevation threshold for top 15%
+	var elevations: Array[float] = []
+	for hex in cells_in_chunk:
+		elevations.append(cells[hex].elevation)
+	elevations.sort()
+	var threshold_idx: int = int(elevations.size() * RIVER_SOURCE_PERCENTILE)
+	if threshold_idx >= elevations.size():
+		threshold_idx = elevations.size() - 1
+	var threshold: float = elevations[threshold_idx]
+
+	# Collect candidate source cells (above threshold, not water)
+	var candidates: Array[Vector3i] = []
+	for hex in cells_in_chunk:
+		var c: HexCellData = cells[hex]
+		if c.elevation >= threshold and c.biome != BIOME_WATER and c.biome != BIOME_DEEP_WATER:
+			candidates.append(hex)
+
+	# Shuffle candidates and try to place rivers
+	candidates.shuffle()
+	var rivers_placed: int = 0
+	for source in candidates:
+		if rivers_placed >= MAX_RIVERS_PER_CHUNK:
+			break
+		var path := _flow_river(source)
+		if path.size() >= 3:
+			# Check if river reached water
+			var end_hex: Vector3i = path[-1]
+			var end_cell: HexCellData = cells[end_hex]
+			var reached_water: bool = end_cell.biome == BIOME_WATER or end_cell.biome == BIOME_DEEP_WATER
+			if not reached_water:
+				# Place water at lowest endpoint tiles (last 1-3 tiles)
+				var water_count: int = mini(3, path.size())
+				for i in range(path.size() - water_count, path.size()):
+					var whex: Vector3i = path[i]
+					var wc: HexCellData = cells[whex]
+					wc.biome = BIOME_WATER
+					wc.color = BIOME_COLORS[BIOME_WATER]
+			_paint_river_path(path)
+			rivers_placed += 1
+
+
+func _flow_river(start: Vector3i) -> Array[Vector3i]:
+	# Dijkstra toward nearest water cell
+	# Cost: strongly prefers downhill, penalizes uphill to escape local minima
+	if _cell_exists(start) and (cells[start].biome == BIOME_WATER or cells[start].biome == BIOME_DEEP_WATER):
+		return []
+
+	var UP_PENALTY: float = 5.0
+	var MAX_SEARCH: int = 500
+
+	var open: Array = []  # [g_cost, hex]
+	var g_cost: Dictionary = {start: 0.0}
+	var came_from: Dictionary = {}
+	var closed: Dictionary = {}
+
+	# Track lowest cell explored (fallback endpoint when no water found)
+	var lowest_hex: Vector3i = start
+	var lowest_elev: float = cells[start].elevation
+
+	open.append([0.0, start])
+
+	while open.size() > 0:
+		var best_idx: int = 0
+		for i in range(1, open.size()):
+			if open[i][0] < open[best_idx][0]:
+				best_idx = i
+		var current: Vector3i = open[best_idx][1]
+		open.remove_at(best_idx)
+
+		if closed.has(current):
+			continue
+		closed[current] = true
+
+		var c_cell: HexCellData = cells[current]
+
+		if c_cell.biome == BIOME_WATER or c_cell.biome == BIOME_DEEP_WATER:
+			var path: Array[Vector3i] = [current]
+			var trace := current
+			while came_from.has(trace):
+				trace = came_from[trace]
+				path.append(trace)
+			path.reverse()
+			return path
+
+		# Track lowest explored cell
+		if c_cell.elevation < lowest_elev:
+			lowest_elev = c_cell.elevation
+			lowest_hex = current
+
+		if closed.size() >= MAX_SEARCH:
+			break
+
+		for nb in HexGridMath.cube_neighbors(current):
+			if closed.has(nb):
+				continue
+			if not _cell_exists(nb):
+				_create_cell_only(nb)
+			var nb_cell: HexCellData = cells[nb]
+			var elev_diff: float = nb_cell.elevation - c_cell.elevation
+			var move_cost: float = 1.0 + maxf(0.0, elev_diff) * UP_PENALTY
+			var new_g: float = g_cost[current] + move_cost
+			if not g_cost.has(nb) or new_g < g_cost[nb]:
+				g_cost[nb] = new_g
+				came_from[nb] = current
+				open.append([new_g, nb])
+
+	# No water found — return path to lowest point
+	if lowest_hex != start and came_from.has(lowest_hex):
+		var path: Array[Vector3i] = [lowest_hex]
+		var trace := lowest_hex
+		while came_from.has(trace):
+			trace = came_from[trace]
+			path.append(trace)
+		path.reverse()
+		return path
+
+	return []
+
+
+func _paint_river_path(path: Array[Vector3i]) -> void:
+	for hex in path:
+		if not _cell_exists(hex):
+			continue
+		# Paint center sub (0) of each hex along the path
+		_river_paint(hex, 0)
+		# Also paint exit sub toward next hex in path
+		var idx := path.find(hex)
+		if idx < path.size() - 1:
+			var next: Vector3i = path[idx + 1]
+			var diff := next - hex
+			for d in 6:
+				if HexGridMath.cube_direction(d) == diff:
+					var exit_sub: int = ((6 - d) % 6) + 1
+					_river_paint(hex, exit_sub)
+					break
+		# Also paint entry sub from previous hex
+		if idx > 0:
+			var prev: Vector3i = path[idx - 1]
+			var diff := hex - prev
+			for d in 6:
+				if HexGridMath.cube_direction(d) == diff:
+					var entry_dir: int = (d + 3) % 6
+					var entry_sub: int = ((6 - entry_dir) % 6) + 1
+					_river_paint(hex, entry_sub)
+					break
 
 
 # ============================================================================
@@ -703,6 +893,14 @@ func _get_visible_hex_range() -> Array[Vector3i]:
 func _draw() -> void:
 	var visible_hexes := _get_visible_hex_range()
 
+	# Generate rivers for newly visible chunks
+	var seen_chunks: Dictionary = {}
+	for hex in visible_hexes:
+		var ck := _chunk_key(hex)
+		if not seen_chunks.has(ck):
+			seen_chunks[ck] = true
+			_ensure_chunk_rivers(ck)
+
 	# Draw terrain
 	for hex in visible_hexes:
 		var cell := _get_or_create_cell(hex)
@@ -713,6 +911,19 @@ func _draw() -> void:
 		if show_grid:
 			var grid_color := Color(0, 0, 0, 0.15)
 			draw_polyline(corners + PackedVector2Array([corners[0]]), grid_color, 1.0)
+
+	# Draw height visualization
+	if show_height:
+		for hex in visible_hexes:
+			var cell: HexCellData = cells[hex]
+			for i in TOTAL_SUBS:
+				var h: float = cell.sub_heights[i]
+				# Map height (-1..1) to brightness (0.4..1.6)
+				var brightness: float = lerpf(0.4, 1.6, (h + 1.0) * 0.5)
+				var col := Color(brightness, brightness, brightness, 0.35)
+				var sub_screen := _get_sub_hex_screen_pos(hex, i)
+				var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
+				draw_colored_polygon(sub_corners, col)
 
 	# Draw sub-hex overlay
 	if show_overlay:
