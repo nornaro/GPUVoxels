@@ -666,36 +666,91 @@ func _ensure_chunk_rivers(chunk_origin: Vector2i) -> void:
 			var end_cell: HexCellData = cells[end_hex]
 			var reached_water: bool = end_cell.biome == BIOME_WATER or end_cell.biome == BIOME_DEEP_WATER
 			if not reached_water:
-				# Place water at lowest endpoint tiles (last 1-3 tiles)
 				var water_count: int = mini(3, path.size())
 				for i in range(path.size() - water_count, path.size()):
 					var whex: Vector3i = path[i]
 					var wc: HexCellData = cells[whex]
 					wc.biome = BIOME_WATER
 					wc.color = BIOME_COLORS[BIOME_WATER]
+					river_cells.erase(whex)
+					road_cells.erase(whex)
+					for vi in 6:
+						var vkey := _vertex_key(whex, vi)
+						if vertex_subs.has(vkey):
+							vertex_subs[vkey] = {"river": false, "road": false}
 			_paint_river_path(path)
 			rivers_placed += 1
 
 
 func _flow_river(start: Vector3i) -> Array[Vector3i]:
-	# Dijkstra toward nearest water cell
-	# Cost: strongly prefers downhill, penalizes uphill to escape local minima
+	# Follow steepest descent. If stuck in basin, use Dijkstra to escape.
 	if _cell_exists(start) and (cells[start].biome == BIOME_WATER or cells[start].biome == BIOME_DEEP_WATER):
 		return []
 
-	var UP_PENALTY: float = 5.0
-	var MAX_SEARCH: int = 500
+	var path: Array[Vector3i] = [start]
+	var current := start
+	var visited: Dictionary = {start: true}
+	var UP_PENALTY: float = 8.0
+	var MAX_STEPS: int = 150
 
-	var open: Array = []  # [g_cost, hex]
-	var g_cost: Dictionary = {start: 0.0}
+	for _step in MAX_STEPS:
+		var c: HexCellData = cells[current]
+
+		if c.biome == BIOME_WATER or c.biome == BIOME_DEEP_WATER:
+			return path
+
+		# Gather neighbors sorted by elevation (lowest first)
+		var neighbors: Array = []
+		for nb in HexGridMath.cube_neighbors(current):
+			if not _cell_exists(nb):
+				_create_cell_only(nb)
+			neighbors.append(nb)
+		neighbors.sort_custom(func(a, b): return cells[a].elevation < cells[b].elevation)
+
+		# Find best downhill neighbor (not visited)
+		var found_downhill: bool = false
+		for nb in neighbors:
+			if visited.has(nb):
+				continue
+			if cells[nb].elevation < c.elevation:
+				visited[nb] = true
+				path.append(nb)
+				current = nb
+				found_downhill = true
+				break
+
+		if found_downhill:
+			continue
+
+		# Stuck in basin — use short Dijkstra to escape (find water or lowest point)
+		var basin_path := _flow_escape_basin(current, visited, UP_PENALTY)
+		if basin_path.size() > 1:
+			# basin_path starts from current, skip first (it's current)
+			for i in range(1, basin_path.size()):
+				var nh: Vector3i = basin_path[i]
+				visited[nh] = true
+				path.append(nh)
+				current = nh
+				if cells[current].biome == BIOME_WATER or cells[current].biome == BIOME_DEEP_WATER:
+					return path
+		else:
+			# Truly stuck, stop here
+			break
+
+	return path
+
+
+func _flow_escape_basin(from: Vector3i, global_visited: Dictionary, up_penalty: float) -> Array[Vector3i]:
+	# Short Dijkstra escape: find nearest water or lowest point reachable with modest uphill
+	var MAX_ESCAPE: int = 50
+	var open: Array = []
+	var g_cost: Dictionary = {from: 0.0}
 	var came_from: Dictionary = {}
 	var closed: Dictionary = {}
+	var lowest_hex: Vector3i = from
+	var lowest_elev: float = cells[from].elevation
 
-	# Track lowest cell explored (fallback endpoint when no water found)
-	var lowest_hex: Vector3i = start
-	var lowest_elev: float = cells[start].elevation
-
-	open.append([0.0, start])
+	open.append([0.0, from])
 
 	while open.size() > 0:
 		var best_idx: int = 0
@@ -709,33 +764,35 @@ func _flow_river(start: Vector3i) -> Array[Vector3i]:
 			continue
 		closed[current] = true
 
+		if global_visited.has(current) and current != from:
+			continue
+
 		var c_cell: HexCellData = cells[current]
 
 		if c_cell.biome == BIOME_WATER or c_cell.biome == BIOME_DEEP_WATER:
-			var path: Array[Vector3i] = [current]
+			var result: Array[Vector3i] = [current]
 			var trace := current
 			while came_from.has(trace):
 				trace = came_from[trace]
-				path.append(trace)
-			path.reverse()
-			return path
+				result.append(trace)
+			result.reverse()
+			return result
 
-		# Track lowest explored cell
 		if c_cell.elevation < lowest_elev:
 			lowest_elev = c_cell.elevation
 			lowest_hex = current
 
-		if closed.size() >= MAX_SEARCH:
+		if closed.size() >= MAX_ESCAPE:
 			break
 
 		for nb in HexGridMath.cube_neighbors(current):
-			if closed.has(nb):
+			if closed.has(nb) or global_visited.has(nb):
 				continue
 			if not _cell_exists(nb):
 				_create_cell_only(nb)
 			var nb_cell: HexCellData = cells[nb]
 			var elev_diff: float = nb_cell.elevation - c_cell.elevation
-			var move_cost: float = 1.0 + maxf(0.0, elev_diff) * UP_PENALTY
+			var move_cost: float = 1.0 + maxf(0.0, elev_diff) * up_penalty
 			var new_g: float = g_cost[current] + move_cost
 			if not g_cost.has(nb) or new_g < g_cost[nb]:
 				g_cost[nb] = new_g
@@ -743,26 +800,27 @@ func _flow_river(start: Vector3i) -> Array[Vector3i]:
 				open.append([new_g, nb])
 
 	# No water found — return path to lowest point
-	if lowest_hex != start and came_from.has(lowest_hex):
-		var path: Array[Vector3i] = [lowest_hex]
+	if lowest_hex != from and came_from.has(lowest_hex):
+		var result: Array[Vector3i] = [lowest_hex]
 		var trace := lowest_hex
 		while came_from.has(trace):
 			trace = came_from[trace]
-			path.append(trace)
-		path.reverse()
-		return path
+			result.append(trace)
+		result.reverse()
+		return result
 
 	return []
 
 
 func _paint_river_path(path: Array[Vector3i]) -> void:
-	for hex in path:
+	for idx in path.size():
+		var hex: Vector3i = path[idx]
 		if not _cell_exists(hex):
 			continue
-		# Paint center sub (0) of each hex along the path
+		var c: HexCellData = cells[hex]
+		if c.biome == BIOME_WATER or c.biome == BIOME_DEEP_WATER:
+			continue
 		_river_paint(hex, 0)
-		# Also paint exit sub toward next hex in path
-		var idx := path.find(hex)
 		if idx < path.size() - 1:
 			var next: Vector3i = path[idx + 1]
 			var diff := next - hex
@@ -771,7 +829,6 @@ func _paint_river_path(path: Array[Vector3i]) -> void:
 					var exit_sub: int = ((6 - d) % 6) + 1
 					_river_paint(hex, exit_sub)
 					break
-		# Also paint entry sub from previous hex
 		if idx > 0:
 			var prev: Vector3i = path[idx - 1]
 			var diff := hex - prev
