@@ -689,18 +689,21 @@ func _ensure_chunk_rivers(chunk_origin: Vector2i) -> void:
 
 
 func _flood_fill_basin(start: Vector3i) -> Array[Vector3i]:
+	var MAX_BASIN: int = MIN_LAKE_SIZE * 3
 	var basin: Array[Vector3i] = []
 	var queue: Array[Vector3i] = [start]
 	var visited: Dictionary = {start: true}
 	var max_elev: float = cells[start].elevation
 	while queue.size() > 0:
+		if basin.size() >= MAX_BASIN:
+			break
 		var h: Vector3i = queue.pop_back()
 		basin.append(h)
 		for nb in HexGridMath.cube_neighbors(h):
 			if visited.has(nb):
 				continue
 			if not _cell_exists(nb):
-				_create_cell_only(nb)
+				continue
 			var nc: HexCellData = cells[nb]
 			if nc.biome == BIOME_WATER or nc.biome == BIOME_DEEP_WATER:
 				continue
@@ -1025,14 +1028,24 @@ func _draw() -> void:
 		for hex in visible_hexes:
 			_draw_sub_hex_overlay(hex)
 
-	# Draw rivers
+	# Draw rivers (only visible ones)
+	var visible_set: Dictionary = {}
+	for hex in visible_hexes:
+		visible_set[hex] = true
 	for hex in river_cells:
-		_draw_river_hex(hex)
+		if visible_set.has(hex):
+			_draw_river_hex(hex)
 
-	# Draw vertex rivers
+	# Draw vertex rivers (only visible ones)
 	for key in vertex_subs:
 		if vertex_subs[key]["river"]:
-			_draw_vertex_river(key)
+			# Parse first hex from key to check visibility
+			var parts: PackedStringArray = key.split("|")
+			if parts.size() >= 1:
+				var coords: PackedStringArray = parts[0].split(",")
+				var khex := Vector3i(int(coords[0]), int(coords[1]), int(coords[2]))
+				if visible_set.has(khex):
+					_draw_vertex_river(key)
 
 	# Draw roads (segment by segment)
 	for road in roads:
