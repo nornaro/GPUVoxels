@@ -95,8 +95,8 @@ var noise_freq: float = 0.008
 # Chunk-based river generation
 var chunks_with_rivers: Dictionary = {}  # chunk_key -> true
 const CHUNK_SIZE: int = 10  # hexes per chunk side
-const RIVER_SOURCE_PERCENTILE: float = 0.85  # top 15%
-const MAX_RIVERS_PER_CHUNK: int = 2
+const RIVER_SOURCE_PERCENTILE: float = 0.97  # top 3%
+const MAX_RIVERS_PER_CHUNK: int = 1
 const MIN_LAKE_SIZE: int = 10
 
 
@@ -722,30 +722,35 @@ func _post_process_rivers(chunk_paths: Array[Array], cells_in_chunk: Array[Vecto
 		else:
 			_convert_river_to_water(path)
 
-	# Step 4: Tiles with 5+ water neighbors become water
-	var to_water: Array[Vector3i] = []
-	for hex in cells_in_chunk:
-		if not _cell_exists(hex):
-			continue
-		if _is_water_biome(cells[hex].biome):
-			continue
-		var wn := 0
-		for nb in HexGridMath.cube_neighbors(hex):
-			if _cell_exists(nb) and _is_water_biome(cells[nb].biome):
-				wn += 1
-		if wn >= 5:
-			to_water.append(hex)
-	for hex in to_water:
-		var c: HexCellData = cells[hex]
-		c.biome = BIOME_WATER
-		c.color = BIOME_COLORS[BIOME_WATER]
-		_set_flat_water_heights(c, WATER_LEVEL)
-		river_cells.erase(hex)
-		road_cells.erase(hex)
-		for vi in 6:
-			var vkey := _vertex_key(hex, vi)
-			if vertex_subs.has(vkey):
-				vertex_subs[vkey] = {"river": false, "road": false}
+	# Step 4: Tiles with 5+ water neighbors become water (iterate until stable)
+	var changed := true
+	while changed:
+		changed = false
+		var to_water: Array[Vector3i] = []
+		for hex in cells_in_chunk:
+			if not _cell_exists(hex):
+				continue
+			if _is_water_biome(cells[hex].biome):
+				continue
+			var wn := 0
+			for nb in HexGridMath.cube_neighbors(hex):
+				if _cell_exists(nb) and _is_water_biome(cells[nb].biome):
+					wn += 1
+			if wn >= 5:
+				to_water.append(hex)
+		for hex in to_water:
+			var c: HexCellData = cells[hex]
+			c.biome = BIOME_WATER
+			c.color = BIOME_COLORS[BIOME_WATER]
+			_set_flat_water_heights(c, WATER_LEVEL)
+			river_cells.erase(hex)
+			road_cells.erase(hex)
+			for vi in 6:
+				var vkey := _vertex_key(hex, vi)
+				if vertex_subs.has(vkey):
+					vertex_subs[vkey] = {"river": false, "road": false}
+		if to_water.size() > 0:
+			changed = true
 
 	# Step 5: Flood-fill from existing ocean/deep water to mark lake tiles
 	var ocean_connected: Dictionary = {}
@@ -788,6 +793,18 @@ func _post_process_rivers(chunk_paths: Array[Array], cells_in_chunk: Array[Vecto
 			c.biome = BIOME_LAKE
 			c.color = BIOME_COLORS[BIOME_LAKE]
 			_set_flat_water_heights(c, LAKE_LEVEL)
+
+	# Step 6: Remove all remaining river subtiles from water tiles
+	for hex in cells_in_chunk:
+		if not _cell_exists(hex):
+			continue
+		if not _is_water_biome(cells[hex].biome):
+			continue
+		river_cells.erase(hex)
+		for vi in 6:
+			var vkey := _vertex_key(hex, vi)
+			if vertex_subs.has(vkey):
+				vertex_subs[vkey]["river"] = false
 
 
 func _undo_river_path(path: Array[Vector3i]) -> void:
