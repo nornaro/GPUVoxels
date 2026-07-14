@@ -4,17 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Fixed
-- **Noise pattern repeating across chunks** — `_generate_chunk_tiles()` now uses `get_noise_2d()` with world-positioned coordinates instead of `get_image()` which always sampled from (0,0).
-- **Biomes too small/inconsistent** — Added fractal noise (FBM, 3 octaves) with lower base frequency (0.008) for larger, more natural biome regions.
-- **Terrain modes** — Default view shows smooth terrain (flat hexes at varying heights). F key switches to voxel view with 1m-stepped hex columns.
-- **Painter UX** — LMB places, RMB removes. Escape cancels all modes. Strip meshes now reach neighbor centers (sqrt(3) * HEX_SIZE).
-- **Road/river strips invisible** — Strip meshes had clockwise winding (back face) while CULL_BACK was active. Reversed winding order on both road and river strip meshes, added CULL_DISABLED to overlay materials.
-
-### Added
-- **Terrain deformation** — Voxel mode has deterministic height jitter for natural variation between steps.
-- **Road and River painters** — Exclusive painter system:
-  - River overrides road (same tile cannot be both).
-  - Roads draw straight connections, rivers draw curvy sinusoidal connections.
-  - 90-degree turns get bisecting dot connectors.
-  - Drag-painting with both LMB (place) and RMB (remove).
+### Changed
+- **Complete 2D rewrite** — Stripped all 3D rendering (chunks, meshes, shaders, libraries). Kept only `HexGridMath` and simplified `HexCellData`.
+- **2D hex map** — Flat 2D top-down hex map with Camera2D panning (WASD/MMB) and scroll zoom.
+- **Noise-based terrain** — Infinite terrain generated on-demand from FastNoiseLite (Simplex Smooth, FBM 3 octaves). 6 biomes: deep water, water, beach, grass, dirt, stone.
+- **Sub-hex overlay** — Every hex split into 7 sub-hexes (1 center + 6 ring). Transparent by default, toggle with H key.
+- **River paint brush** — Free-draw rivers on sub-hexes. LMB paint, RMB erase. Toggle full/half brush with Shift.
+- **Road line tool** — Point-to-point thick line drawing. Click first hex, click second hex to draw road. Roads rendered as thick lines with end caps.
+- **Controls** — 1=Navigate, 2=River, 3=Road. G=grid lines. H=overlay. Esc=cancel.

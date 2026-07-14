@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://b0qi0jgrr8s6w"]
+[gd_scene format=3 uid="uid://5egckt18wfeu"]
 
 [ext_resource type="ArrayMesh" uid="uid://cyg2jrfpw3smp" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_archeryrange_blue.mesh" id="1_mg4h1"]
 [ext_resource type="ArrayMesh" uid="uid://bdgs6otu3vv5k" path="res://assets/kaykit_medieval_hexagon_pack/buildings/blue/building_barracks_blue.mesh" id="2_mv2k3"]
