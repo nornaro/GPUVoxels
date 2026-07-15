@@ -79,9 +79,9 @@ const MIN_LAKE_SIZE: int = 10
 # Generation queues
 var _pending_chunks: Array[Vector2i] = []
 var _pending_rivers: Array[Vector2i] = []
-const MAX_TERRAIN_PER_FRAME: int = 4
-const MAX_RIVERS_PER_FRAME: int = 2
-const MAX_NEW_CHUNKS_QUEUED_PER_FRAME: int = 8
+const MAX_TERRAIN_PER_FRAME: int = 32
+const MAX_RIVERS_PER_FRAME: int = 8
+const MAX_NEW_CHUNKS_QUEUED_PER_FRAME: int = 64
 
 # Draw cache — invalidated only on camera change or paint
 var _cached_visible_hexes: Array[Vector3i] = []
@@ -215,12 +215,8 @@ func _process_pending_batch() -> void:
 	if _pending_chunks.is_empty():
 		return
 	var count := mini(_pending_chunks.size(), MAX_TERRAIN_PER_FRAME)
-	var batch: Array[Vector2i] = []
-	batch.resize(count)
-	for i in count:
-		batch[i] = _pending_chunks[i]
-	for i in range(count - 1, -1, -1):
-		_pending_chunks.remove_at(i)
+	var batch: Array[Vector2i] = _pending_chunks.slice(0, count)
+	_pending_chunks = _pending_chunks.slice(count)
 	chunk_manager.generate_batch(batch)
 	for ck in batch:
 		if _chunk_has_cells(ck) and not chunks_with_rivers.has(ck):
@@ -231,17 +227,16 @@ func _process_pending_batch() -> void:
 
 func _process_pending_rivers() -> void:
 	var processed := 0
-	var i := 0
-	while i < _pending_rivers.size() and processed < MAX_RIVERS_PER_FRAME:
-		var ck: Vector2i = _pending_rivers[i]
+	var remaining: Array[Vector2i] = []
+	for ck in _pending_rivers:
 		if chunks_with_rivers.has(ck):
-			_pending_rivers.remove_at(i)
 			continue
-		if _chunk_all_neighbors_loaded(ck):
+		if processed < MAX_RIVERS_PER_FRAME and _chunk_all_neighbors_loaded(ck):
 			_ensure_chunk_rivers(ck)
 			processed += 1
-		_pending_rivers.remove_at(i)
-		i += 1
+		else:
+			remaining.append(ck)
+	_pending_rivers = remaining
 	if processed > 0 and _pending_rivers.is_empty():
 		_needs_save = true
 
