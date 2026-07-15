@@ -94,6 +94,8 @@ var _cached_camera_pos: Vector2 = Vector2(NAN, NAN)
 var _cached_camera_zoom: float = NAN
 var _last_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
 var _last_debug_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
+var _hex_mesh: ArrayMesh = null
+var _hex_grid_lines: PackedVector2Array = PackedVector2Array()
 
 
 func _ready() -> void:
@@ -276,6 +278,7 @@ func _ensure_draw_cache() -> void:
 		var vdata: Dictionary = vertex_subs[key]
 		if vdata["river"] and vdata.has("hex") and _cached_visible_set.has(vdata["hex"]):
 			_cached_visible_vertex_rivers.append(key)
+	_build_hex_mesh()
 
 
 # ============================================================================
@@ -1314,12 +1317,38 @@ func _get_visible_hex_range() -> Array[Vector3i]:
 
 
 # ============================================================================
-# RENDERING
+# BATCHED HEX MESH
 # ============================================================================
-func _draw() -> void:
-	_ensure_draw_cache()
+func _build_hex_mesh() -> void:
 	var visible_hexes := _cached_visible_hexes
-	var visible_set := _cached_visible_set
+	var hex_count := 0
+	for hex in visible_hexes:
+		if _cell_exists(hex):
+			hex_count += 1
+	if hex_count == 0:
+		_hex_mesh = null
+		_hex_grid_lines = PackedVector2Array()
+		return
+
+	# Pre-compute cos/sin for hex corners
+	var cos_arr: Array[float] = []
+	var sin_arr: Array[float] = []
+	for i in 6:
+		var angle := deg_to_rad(60.0 * float(i))
+		cos_arr.append(cos(angle))
+		sin_arr.append(sin(angle))
+
+	var verts := PackedVector2Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	verts.resize(hex_count * 7)
+	colors.resize(hex_count * 7)
+	indices.resize(hex_count * 18)
+
+	var grid_lines := PackedVector2Array()
+	var vi := 0
+	var ii := 0
+	var hi := 0
 
 	for hex in visible_hexes:
 		if not _cell_exists(hex):
@@ -1327,30 +1356,73 @@ func _draw() -> void:
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 		var screen_pos := _world_to_screen(Vector2(hpos.x, hpos.z))
-		var corners := _hex_corners(screen_pos, HEX_SIZE * camera_zoom)
+		var sz := HEX_SIZE * camera_zoom
+
+		# Compute final composited color
 		var draw_color := cell.color
-		draw_colored_polygon(corners, draw_color)
 		if show_elevation_shade:
 			var elev_col := _elevation_to_color(cell.elevation)
-			draw_colored_polygon(corners, elev_col)
-		if show_grid:
-			var grid_color := Color(0, 0, 0, 0.15)
-			draw_polyline(corners + PackedVector2Array([corners[0]]), grid_color, 1.0)
-
-	if show_height:
-		for hex in visible_hexes:
-			if not _cell_exists(hex):
-				continue
-			var cell: HexCellData = cells[hex]
-			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			var screen_pos := _world_to_screen(Vector2(hpos.x, hpos.z))
-			var corners := _hex_corners(screen_pos, HEX_SIZE * camera_zoom)
+			draw_color = draw_color.lerp(elev_col, 0.4)
+		if show_height:
 			var brightness: float = lerpf(0.4, 1.6, (cell.elevation + 1.0) * 0.5)
-			var col := Color(brightness, brightness, brightness, 0.35)
-			draw_colored_polygon(corners, col)
+			var height_col := Color(brightness, brightness, brightness, 0.35)
+			draw_color = draw_color.lerp(height_col, 0.35)
+
+		# Center vertex
+		var base_vi := vi
+		verts[vi] = screen_pos
+		colors[vi] = draw_color
+		vi += 1
+
+		# 6 corner vertices
+		for c in 6:
+			verts[vi] = screen_pos + Vector2(cos_arr[c], sin_arr[c]) * sz
+			colors[vi] = draw_color
+			vi += 1
+
+		# 6 triangles (fan from center)
+		for c in 6:
+			indices[ii] = base_vi
+			indices[ii + 1] = base_vi + 1 + c
+			indices[ii + 2] = base_vi + 1 + (c + 1) % 6
+			ii += 3
+
+		# Grid lines
+		if show_grid:
+			for c in 6:
+				grid_lines.append(verts[base_vi + 1 + c])
+				grid_lines.append(verts[base_vi + 1 + (c + 1) % 6])
+
+		hi += 1
+
+	# Build ArrayMesh
+	_hex_mesh = ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	_hex_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_hex_grid_lines = grid_lines
+
+
+# ============================================================================
+# RENDERING
+# ============================================================================
+func _draw() -> void:
+	_ensure_draw_cache()
+	var visible_set := _cached_visible_set
+
+	# Draw all hex fills in one batched call
+	if _hex_mesh != null:
+		draw_mesh(_hex_mesh, null)
+
+	# Draw grid lines in one batched call
+	if show_grid and not _hex_grid_lines.is_empty():
+		draw_multiline(_hex_grid_lines, Color(0, 0, 0, 0.15), 1.0)
 
 	if show_overlay:
-		for hex in visible_hexes:
+		for hex in _cached_visible_hexes:
 			_draw_sub_hex_overlay(hex)
 
 	for hex in _cached_visible_rivers:
