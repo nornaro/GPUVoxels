@@ -128,7 +128,7 @@ func generate_batch(batch: Array) -> void:
 	_last_batch_generated = true
 
 
-func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictionary = {}, p_vertex_subs: Dictionary = {}, p_chunks_with_rivers: Dictionary = {}, p_roads: Array = []) -> void:
+func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictionary = {}, p_vertex_subs: Dictionary = {}, p_chunks_with_rivers: Dictionary = {}, p_roads: Array = [], p_blocks: Dictionary = {}) -> void:
 	var data: Dictionary = {
 		"noise": {
 			"freq": noise_freq,
@@ -148,6 +148,7 @@ func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictio
 		"road_list": [],
 		"vertex_subs": {},
 		"chunks_with_rivers": [],
+		"blocks": [],
 	}
 	for key in cells:
 		var c: HexCellData = cells[key]
@@ -172,6 +173,8 @@ func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictio
 		data["vertex_subs"][str(vkey)] = {"river": vd["river"], "road": vd["road"], "hex": [vd["hex"].x, vd["hex"].y, vd["hex"].z], "vi": vd["vi"]}
 	for ck in p_chunks_with_rivers:
 		data["chunks_with_rivers"].append([ck.x, ck.y])
+	for b_hex in p_blocks:
+		data["blocks"].append([b_hex.x, b_hex.y, b_hex.z])
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		push_error("ChunkManager: Cannot write to " + path)
@@ -269,6 +272,10 @@ func load_map(path: String) -> Dictionary:
 		var t_arr: Array = road_entry["to"]
 		roads.append({"from": Vector3i(f_arr[0], f_arr[1], f_arr[2]), "to": Vector3i(t_arr[0], t_arr[1], t_arr[2])})
 	result["roads"] = roads
+	var blocks: Dictionary = {}
+	for b_arr in root.get("blocks", []):
+		blocks[Vector3i(b_arr[0], b_arr[1], b_arr[2])] = true
+	result["blocks"] = blocks
 	return result
 
 

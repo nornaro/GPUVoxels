@@ -1,8 +1,10 @@
-extends Node2D
+extends Node3D
 
-const HEX_SIZE: float = 24.0
+const HEX_SIZE: float = 1.1547
 const SUB_HEX_SIZE: float = HEX_SIZE / 3.0
 const SUB_HEX_DIST: float = HEX_SIZE * 0.57735026919
+const HEIGHT_SCALE: float = 15.0
+const WATER_HEIGHT: float = 0.3
 
 const VERTEX_NEIGHBORS: Array = [
 	[0, 1],
@@ -39,36 +41,61 @@ var BIOME_COLORS: Array[Color] = [
 const WATER_LEVEL: float = -0.3
 const LAKE_LEVEL: float = -0.2
 
-var camera_pos: Vector2 = Vector2.ZERO
-var camera_zoom: float = 1.0
+const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.0]
+const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Flat"]
+var elevation_step_idx: int = 0
+
 var cells: Dictionary = {}
 var chunk_manager: ChunkManager
 
 var river_cells: Dictionary = {}
 var road_cells: Dictionary = {}
 var vertex_subs: Dictionary = {}
-var show_overlay: bool = false
-var show_grid: bool = false
-var show_height: bool = false
-var show_elevation_shade: bool = false
+
+## Toggle sub-hex overlay (H key). Shows the13 sub-hex grid on each hex for river/road painting.
+@export var show_overlay: bool = false
+
+## Toggle grid lines (G key). Shows a wireframe grid on the terrain.
+@export var show_grid: bool = false
+
+## Toggle height labels (V key). Shows elevation height text on each hex.
+@export var show_height: bool = false
+
+## Toggle elevation shading (Insert key). Colors hexes by elevation value.
+@export var show_elevation_shade: bool = false
+
+## Current tool: 0=Navigate, 1=River, 2=Road, 3=Block. Change with keys 1/2/3/9 or Escape to deselect.
+@export_range(0, 3) var tool_mode: int = 0:
+	set(v):
+		tool_mode = v
+		if is_inside_tree():
+			_update_ui()
+
+## Elevation step precision (F key). 1.0=integer, 0.1=tenth, 0.0=flat.
+@export var elevation_step: float = 1.0:
+	set(v):
+		elevation_step = v
+		if ELEVATION_STEPS.has(v):
+			elevation_step_idx = ELEVATION_STEPS.find(v)
 
 var roads: Array[Dictionary] = []
-
-var tool_mode: int = 0
-const TOOL_NAMES := ["Navigate", "River", "Road"]
+const TOOL_NAMES := ["Navigate", "River", "Road", "Block"]
 
 var painting: bool = false
 var erasing: bool = false
 
 var road_start: Vector3i = Vector3i(999999, 999999, -1999998)
+var placed_blocks: Dictionary = {}
 
 var info_label: Label
 var tool_label: Label
 
 var panning: bool = false
 var pan_start: Vector2 = Vector2.ZERO
+var orbiting: bool = false
+var orbit_start: Vector2 = Vector2.ZERO
 
-const VIEW_MARGIN: float = 100.0
+const VIEW_MARGIN: float = 5.0
 
 var chunks_with_rivers: Dictionary = {}
 const CHUNK_SIZE: int = 10
@@ -76,43 +103,129 @@ const RIVER_SOURCE_PERCENTILE: float = 0.97
 const MAX_RIVERS_PER_CHUNK: int = 1
 const MIN_LAKE_SIZE: int = 10
 
-# Generation queues
 var _pending_chunks: Array[Vector2i] = []
 var _pending_rivers: Array[Vector2i] = []
 const MAX_TERRAIN_PER_FRAME: int = 32
 const MAX_RIVERS_PER_FRAME: int = 8
 const MAX_NEW_CHUNKS_QUEUED_PER_FRAME: int = 64
 
-# Draw cache — invalidated only on camera change or paint
 var _cached_visible_hexes: Array[Vector3i] = []
 var _cached_visible_set: Dictionary = {}
 var _cached_visible_rivers: Array = []
 var _cached_visible_vertex_rivers: Array = []
 var _needs_save: bool = false
 var _tool_flash_timer: float = 0.0
-var _cached_camera_pos: Vector2 = Vector2(NAN, NAN)
-var _cached_camera_zoom: float = NAN
 var _last_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
 var _last_debug_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
-var _hex_mesh: ArrayMesh = null
-var _hex_grid_lines: PackedVector2Array = PackedVector2Array()
 var _cached_chunk_min: Vector2i = Vector2i.ZERO
 var _cached_chunk_max: Vector2i = Vector2i.ZERO
+
+var camera: Camera3D
+var hex_multimesh_instance: MultiMeshInstance3D
+var overlay_mesh_instance: MeshInstance3D
+var grid_lines_mesh_instance: MeshInstance3D
+
+var camera_yaw: float = 45.0
+var camera_pitch: float = -55.0
+var camera_distance: float = 25.0
+var camera_pivot: Vector3 = Vector3.ZERO
+
+var _hex_prism_mesh: ArrayMesh = null
+var _hex_grass_mesh: ArrayMesh = preload("res://assets/kaykit_medieval_hexagon_pack/tiles/base/hex_grass.mesh")
+var _blocks_container: Node3D
+var _block_instances: Dictionary = {}
+var _needs_rebuild: bool = true
+var _needs_overlay_rebuild: bool = true
+
+var _cached_camera_yaw: float = NAN
+var _cached_camera_pitch: float = NAN
+var _cached_camera_distance: float = NAN
+var _cached_camera_pivot: Vector3 = Vector3(NAN, NAN, NAN)
 
 
 func _ready() -> void:
 	chunk_manager = ChunkManager.new(cells)
+	_setup_3d()
 	_setup_ui()
 	var save_path := "res://map_save.json"
 	if FileAccess.file_exists(save_path):
 		if _load_map_from(save_path):
 			return
-	queue_redraw()
+	_needs_rebuild = true
 
 
 func _exit_tree() -> void:
 	if chunk_manager:
 		chunk_manager.cleanup()
+
+
+func _setup_3d() -> void:
+	camera = Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
+	camera.fov = 60.0
+	camera.near = 0.01
+	camera.far = 500.0
+	add_child(camera)
+	_update_camera_transform()
+
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-50, -30, 0)
+	sun.light_energy = 1.0
+	sun.shadow_enabled = true
+	add_child(sun)
+
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(30, 150, 0)
+	fill.light_energy = 0.3
+	fill.light_color = Color(0.8, 0.85, 1.0)
+	add_child(fill)
+
+	var env := Environment.new()
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.35, 0.35, 0.4)
+	env.ambient_light_energy = 0.6
+	var world_env := WorldEnvironment.new()
+	world_env.environment = env
+	add_child(world_env)
+
+	hex_multimesh_instance = MultiMeshInstance3D.new()
+	var hex_mat := StandardMaterial3D.new()
+	hex_mat.vertex_color_use_as_albedo = true
+	hex_multimesh_instance.material_override = hex_mat
+	add_child(hex_multimesh_instance)
+
+	overlay_mesh_instance = MeshInstance3D.new()
+	var overlay_mat := StandardMaterial3D.new()
+	overlay_mat.vertex_color_use_as_albedo = true
+	overlay_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	overlay_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	overlay_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	overlay_mesh_instance.material_override = overlay_mat
+	add_child(overlay_mesh_instance)
+
+	grid_lines_mesh_instance = MeshInstance3D.new()
+	var grid_mat := StandardMaterial3D.new()
+	grid_mat.vertex_color_use_as_albedo = true
+	grid_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	grid_lines_mesh_instance.material_override = grid_mat
+	add_child(grid_lines_mesh_instance)
+
+	_blocks_container = Node3D.new()
+	add_child(_blocks_container)
+
+	_hex_prism_mesh = _create_hex_prism_mesh()
+
+
+func _update_camera_transform() -> void:
+	var yaw_rad := deg_to_rad(camera_yaw)
+	var pitch_rad := deg_to_rad(camera_pitch)
+	var offset := Vector3(
+		cos(pitch_rad) * sin(yaw_rad),
+		-sin(pitch_rad),
+		cos(pitch_rad) * cos(yaw_rad)
+	) * camera_distance
+	camera.global_position = camera_pivot + offset
+	camera.look_at(camera_pivot, Vector3.UP)
 
 
 func _setup_ui() -> void:
@@ -142,9 +255,12 @@ func _setup_ui() -> void:
 
 func _update_ui() -> void:
 	tool_label.text = "Tool: %s [1/2/3]" % TOOL_NAMES[tool_mode]
-	info_label.text = "Pan: WASD/MMB | Zoom: Scroll | Grid: G | Overlay: H | Height: V | ElevShade: Ins | Regen: R | QSave: F6 | QLoad: F7 | Save: F8 | Load: F9 | Esc: Cancel"
+	info_label.text = "Orbit: MMB | Pan: WASD/RMB | Zoom: Scroll | Rot: Q/E | Grid: G | Overlay: H | ElevStep: F | Block: 9 | Regen: R | QSave: F6 | QLoad: F7 | Save: F8 | Load: F9 | Esc: Cancel"
 
 
+# ============================================================================
+# FRAME PROCESSING
+# ============================================================================
 func _process(delta: float) -> void:
 	_discover_visible_chunks()
 	_process_pending_batch()
@@ -154,32 +270,49 @@ func _process(delta: float) -> void:
 		if _tool_flash_timer <= 0.0:
 			_update_ui()
 	if not _pending_chunks.is_empty() or not _pending_rivers.is_empty():
-		# Only invalidate draw cache when new cells actually appeared
 		if chunk_manager._last_batch_generated:
-			_invalidate_draw_cache()
+			_needs_rebuild = true
 			chunk_manager._last_batch_generated = false
-		queue_redraw()
 	else:
 		if _needs_save:
 			_save_map()
 			_needs_save = false
 		_update_hover_info()
 
+	if _needs_rebuild:
+		_rebuild_hex_multimesh()
+		_rebuild_overlay_mesh()
+		_rebuild_grid_lines()
+		_update_block_instances()
+		_needs_rebuild = false
+		_needs_overlay_rebuild = false
+	elif _needs_overlay_rebuild:
+		_rebuild_overlay_mesh()
+		_needs_overlay_rebuild = false
+
+	if tool_mode == 1:
+		var hover := _get_mouse_hex()
+		if hover != _last_debug_hover_hex:
+			_last_debug_hover_hex = hover
+			_needs_overlay_rebuild = true
+
 
 func _update_hover_info() -> void:
-	var mouse_pos := get_viewport().get_mouse_position()
-	var world_pos := _screen_to_world(mouse_pos)
-	var hex := _world_to_hex(world_pos)
+	var hex := _get_mouse_hex()
 	if hex == _last_hover_hex:
 		return
 	_last_hover_hex = hex
 	if _cell_exists(hex):
 		var cell: HexCellData = cells[hex]
 		var biome_name: String = BIOME_NAMES[cell.biome]
+		var world_pos := _screen_to_world_3d(get_viewport().get_mouse_position())
+		var hex_world := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var local := world_pos - hex_world
 		var best_sub := 0
 		var best_dist := INF
 		for i in TOTAL_SUBS:
-			var d := _get_sub_hex_world_pos(hex, i).distance_to(world_pos)
+			var sub_pos := _get_sub_hex_local_pos(hex, i)
+			var d := Vector2(local.x, local.z).distance_to(sub_pos)
 			if d < best_dist:
 				best_dist = d
 				best_sub = i
@@ -188,17 +321,18 @@ func _update_hover_info() -> void:
 		if best_sub >= VERTEX_OFFSET:
 			sub_type = "Vertex"
 		var sub_h: float = cell.sub_heights[best_sub]
+		var display_h: float = _get_cell_height(cell)
 		var labels := ""
 		if _is_hex_river(hex):
 			labels += "  |  RIVER(%d)" % _hex_river_count(hex)
 		if _is_hex_road(hex):
 			labels += "  |  ROAD(%d)" % _hex_road_count(hex)
-		info_label.text = "Hex: (%d,%d,%d)  |  %s  |  %s %d  |  H: %.1f (avg %.1f)  |  Water nb: %d%s  |  Zoom: %.1f  |  Q:%d R:%d" % [
-			hex.x, hex.y, hex.z, biome_name, sub_type, best_sub, sub_h, cell.elevation, wn, labels, camera_zoom,
+		info_label.text = "Hex: (%d,%d,%d)  |  %s  |  %s %d  |  Elev: %.2f  |  Height: %.1f  |  Water nb: %d%s  |  Q:%d R:%d" % [
+			hex.x, hex.y, hex.z, biome_name, sub_type, best_sub, cell.elevation, display_h, wn, labels,
 			_pending_chunks.size(), _pending_rivers.size()
 		]
 	else:
-		info_label.text = "Hex: none  |  Zoom: %.1f  |  Q:%d R:%d" % [camera_zoom, _pending_chunks.size(), _pending_rivers.size()]
+		info_label.text = "Hex: none  |  Q:%d R:%d" % [_pending_chunks.size(), _pending_rivers.size()]
 
 
 func _discover_visible_chunks() -> void:
@@ -258,21 +392,28 @@ func _chunk_all_neighbors_loaded(ck: Vector2i) -> bool:
 	return true
 
 
+# ============================================================================
+# DRAW CACHE
+# ============================================================================
 func _invalidate_draw_cache() -> void:
-	_cached_camera_pos = Vector2(NAN, NAN)
-	_cached_camera_zoom = NAN
+	_cached_camera_yaw = NAN
+	_cached_camera_pitch = NAN
+	_cached_camera_distance = NAN
+	_cached_camera_pivot = Vector3(NAN, NAN, NAN)
 
 
 func _ensure_draw_cache() -> void:
-	if _cached_camera_pos == camera_pos and _cached_camera_zoom == camera_zoom:
+	if _cached_camera_yaw == camera_yaw and _cached_camera_pitch == camera_pitch and \
+	   _cached_camera_distance == camera_distance and _cached_camera_pivot == camera_pivot:
 		return
-	_cached_camera_pos = camera_pos
-	_cached_camera_zoom = camera_zoom
+	_cached_camera_yaw = camera_yaw
+	_cached_camera_pitch = camera_pitch
+	_cached_camera_distance = camera_distance
+	_cached_camera_pivot = camera_pivot
 	_cached_visible_hexes = _get_visible_hex_range()
 	_cached_visible_set.clear()
 	for hex in _cached_visible_hexes:
 		_cached_visible_set[hex] = true
-	# Compute chunk range from visible hex range
 	if not _cached_visible_hexes.is_empty():
 		_cached_chunk_min = _chunk_key(_cached_visible_hexes[0])
 		_cached_chunk_max = _cached_chunk_min
@@ -291,7 +432,7 @@ func _ensure_draw_cache() -> void:
 		var vdata: Dictionary = vertex_subs[key]
 		if vdata["river"] and vdata.has("hex") and _cached_visible_set.has(vdata["hex"]):
 			_cached_visible_vertex_rivers.append(key)
-	_build_hex_mesh()
+	_needs_rebuild = true
 
 
 # ============================================================================
@@ -308,20 +449,22 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-		camera_zoom = clampf(camera_zoom * 0.9, 0.2, 5.0)
+		camera_distance = clampf(camera_distance * 0.85, 2.0, 100.0)
+		_update_camera_transform()
 		_invalidate_draw_cache()
-		queue_redraw()
 		return
 	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		camera_zoom = clampf(camera_zoom * 1.1, 0.2, 5.0)
+		camera_distance = clampf(camera_distance * 1.15, 2.0, 100.0)
+		_update_camera_transform()
 		_invalidate_draw_cache()
-		queue_redraw()
 		return
 
 	if event.button_index == MOUSE_BUTTON_MIDDLE:
-		panning = event.pressed
 		if event.pressed:
-			pan_start = event.position
+			orbiting = true
+			orbit_start = event.position
+		else:
+			orbiting = false
 		return
 
 	if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -348,15 +491,33 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				_paint_river_at(event.position, false)
 			2:
 				_place_road_at(event.position)
+			3:
+				_place_block_at(event.position)
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
+	if orbiting:
+		var delta := event.position - orbit_start
+		camera_yaw += delta.x * 0.3
+		camera_pitch = clampf(camera_pitch + delta.y * 0.3, -85.0, -10.0)
+		orbit_start = event.position
+		_update_camera_transform()
+		_invalidate_draw_cache()
+		return
+
 	if panning:
 		var delta := event.position - pan_start
-		camera_pos -= delta / camera_zoom
+		var forward := -camera.global_basis.z
+		forward.y = 0.0
+		forward = forward.normalized()
+		var right := camera.global_basis.x
+		right.y = 0.0
+		right = right.normalized()
+		var pan_speed := camera_distance * 0.004
+		camera_pivot += (right * delta.x + forward * -delta.y) * pan_speed
 		pan_start = event.position
+		_update_camera_transform()
 		_invalidate_draw_cache()
-		queue_redraw()
 		return
 
 	if painting and tool_mode == 1:
@@ -366,14 +527,6 @@ func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 		_paint_river_at(event.position, true)
 		return
 
-	# Idle hover: only redraw when hovered hex changes
-	if tool_mode == 2 or tool_mode == 1:
-		var world_pos := _screen_to_world(event.position)
-		var hex := _world_to_hex(world_pos)
-		if hex != _last_debug_hover_hex:
-			_last_debug_hover_hex = hex
-			queue_redraw()
-
 
 func _handle_key(event: InputEventKey) -> void:
 	if not event.pressed:
@@ -382,45 +535,59 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_1:
 			tool_mode = 0
 			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_invalidate_draw_cache()
+			_needs_overlay_rebuild = true
 			_update_ui()
-			queue_redraw()
 		KEY_2:
 			tool_mode = 1
 			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_invalidate_draw_cache()
+			_needs_overlay_rebuild = true
 			_update_ui()
-			queue_redraw()
 		KEY_3:
 			tool_mode = 2
 			road_start = Vector3i(999999, 999999, -1999998)
 			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_invalidate_draw_cache()
+			_needs_overlay_rebuild = true
 			_update_ui()
-			queue_redraw()
+		KEY_9:
+			tool_mode = 3
+			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
+			_needs_overlay_rebuild = true
+			_update_ui()
 		KEY_H:
 			show_overlay = not show_overlay
-			queue_redraw()
+			_needs_overlay_rebuild = true
 		KEY_G:
 			show_grid = not show_grid
-			queue_redraw()
+			_needs_overlay_rebuild = true
 		KEY_V:
 			show_height = not show_height
-			queue_redraw()
+			_needs_rebuild = true
 		KEY_INSERT:
 			show_elevation_shade = not show_elevation_shade
-			queue_redraw()
+			_needs_rebuild = true
 		KEY_ESCAPE:
 			tool_mode = 0
 			road_start = Vector3i(999999, 999999, -1999998)
 			painting = false
 			erasing = false
 			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_invalidate_draw_cache()
+			_needs_overlay_rebuild = true
 			_update_ui()
-			queue_redraw()
+		KEY_Q:
+			camera_yaw -= 15.0
+			_update_camera_transform()
+			_invalidate_draw_cache()
+		KEY_E:
+			camera_yaw += 15.0
+			_update_camera_transform()
+			_invalidate_draw_cache()
 		KEY_R:
 			_regenerate_map()
+		KEY_F:
+			elevation_step_idx = (elevation_step_idx + 1) % ELEVATION_STEPS.size()
+			elevation_step = ELEVATION_STEPS[elevation_step_idx]
+			_needs_rebuild = true
+			_tool_flash("Elevation: " + ELEVATION_STEP_NAMES[elevation_step_idx])
 		KEY_F6:
 			_quick_save()
 		KEY_F7:
@@ -441,17 +608,21 @@ func _regenerate_map() -> void:
 	road_cells.clear()
 	vertex_subs.clear()
 	roads.clear()
+	placed_blocks.clear()
+	_free_all_block_instances()
 	_pending_chunks.clear()
 	_pending_rivers.clear()
 	_needs_save = false
 	_invalidate_draw_cache()
-	queue_redraw()
+	_needs_rebuild = true
 
 
+# ============================================================================
+# SAVE / LOAD
+# ============================================================================
 func _save_map() -> void:
 	var save_path := "res://map_save.json"
-	chunk_manager.save_map(save_path, river_cells, road_cells, vertex_subs, chunks_with_rivers, roads)
-	_save_map_image()
+	chunk_manager.save_map(save_path, river_cells, road_cells, vertex_subs, chunks_with_rivers, roads, placed_blocks)
 
 
 func _load_map_from(path: String) -> bool:
@@ -465,8 +636,10 @@ func _load_map_from(path: String) -> bool:
 	roads.clear()
 	for r in loaded.get("roads", []):
 		roads.append(r)
+	placed_blocks = loaded.get("blocks", {})
+	_rebuild_block_instances()
 	_invalidate_draw_cache()
-	queue_redraw()
+	_needs_rebuild = true
 	return true
 
 
@@ -481,8 +654,7 @@ func _quick_load() -> void:
 
 
 func _save() -> void:
-	chunk_manager.save_map("res://map_save_slot.json", river_cells, road_cells, vertex_subs, chunks_with_rivers, roads)
-	_save_map_image()
+	chunk_manager.save_map("res://map_save_slot.json", river_cells, road_cells, vertex_subs, chunks_with_rivers, roads, placed_blocks)
 	_tool_flash("Saved")
 
 
@@ -496,78 +668,111 @@ func _tool_flash(msg: String) -> void:
 	_tool_flash_timer = 1.5
 
 
-func _save_map_image() -> void:
-	if cells.is_empty():
-		return
-	var min_q := 999999
-	var max_q := -999999
-	var min_r := 999999
-	var max_r := -999999
-	for hex in cells:
-		var hq: int = int(hex.x)
-		var hr: int = int(hex.y)
-		min_q = mini(min_q, hq)
-		max_q = maxi(max_q, hq)
-		min_r = mini(min_r, hr)
-		max_r = maxi(max_r, hr)
-	var img_size := 8
-	var w := (max_q - min_q + 1) * img_size
-	var h := (max_r - min_r + 1) * img_size
-	w = clampi(w, 1, 4096)
-	h = clampi(h, 1, 4096)
-	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
-	img.fill(Color.BLACK)
-	for hex in cells:
-		var c: HexCellData = cells[hex]
-		var px: int = (int(hex.x) - min_q) * img_size
-		var py: int = (int(hex.y) - min_r) * img_size
-		for dx in img_size:
-			for dy in img_size:
-				var sx: int = clampi(px + dx, 0, w - 1)
-				var sy: int = clampi(py + dy, 0, h - 1)
-				img.set_pixel(sx, sy, c.color)
-	img.save_png("res://map_image.png")
+# ============================================================================
+# COORDINATE CONVERSION
+# ============================================================================
+func _screen_to_world_3d(screen_pos: Vector2) -> Vector3:
+	var ray_origin := camera.project_ray_origin(screen_pos)
+	var ray_dir := camera.project_ray_normal(screen_pos)
+	if absf(ray_dir.y) < 0.0001:
+		return Vector3(INF, INF, INF)
+	var t := -ray_origin.y / ray_dir.y
+	if t < 0:
+		return Vector3(INF, INF, INF)
+	return ray_origin + ray_dir * t
 
 
+func _get_mouse_hex() -> Vector3i:
+	var world_pos := _screen_to_world_3d(get_viewport().get_mouse_position())
+	if world_pos.x == INF:
+		return Vector3i(999999, 999999, -1999998)
+	return HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+
+
+func _cell_exists(hex: Vector3i) -> bool:
+	return cells.has(hex)
+
+
+func _get_or_create_cell(hex: Vector3i) -> HexCellData:
+	if cells.has(hex):
+		return cells[hex]
+	return null
+
+
+func _elevation_to_biome(n: float) -> int:
+	if n < -0.5:
+		return BIOME_DEEP_WATER
+	elif n < -0.3:
+		return BIOME_WATER
+	elif n < -0.15:
+		return BIOME_BEACH
+	elif n < 0.2:
+		return BIOME_GRASS
+	elif n < 0.4:
+		return BIOME_DIRT
+	else:
+		return BIOME_STONE
+
+
+func _elevation_to_color(e: float) -> Color:
+	var t: float = clampf((e + 1.0) * 0.5, 0.0, 1.0)
+	return Color(t, t, t, 0.4)
+
+
+func _get_cell_height(cell: HexCellData) -> float:
+	if _is_water_biome(cell.biome):
+		return WATER_HEIGHT
+	var step: float = ELEVATION_STEPS[elevation_step_idx]
+	if step <= 0.0:
+		return HEX_SIZE
+	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
+	var e := maxf(cell.elevation, 0.0)
+	var height := e * hex_width + HEX_SIZE
+	return snappedf(height, step)
+
+
+# ============================================================================
+# RIVER PAINTING
+# ============================================================================
 func _paint_river_at(screen_pos: Vector2, erase: bool) -> void:
-	var world_pos := _screen_to_world(screen_pos)
-	var hex := _world_to_hex(world_pos)
+	var world_pos := _screen_to_world_3d(screen_pos)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	if world_pos.x == INF:
+		return
 	if erase:
 		if _cell_exists(hex):
-			var best_sub := 0
-			var best_dist := INF
-			for i in TOTAL_SUBS:
-				var d := _get_sub_hex_world_pos(hex, i).distance_to(world_pos)
-				if d < best_dist:
-					best_dist = d
-					best_sub = i
+			var best_sub := _find_closest_sub_hex(hex, world_pos)
 			_river_erase(hex, best_sub)
 	else:
 		if not _cell_exists(hex):
-			_invalidate_draw_cache()
-			queue_redraw()
+			_needs_overlay_rebuild = true
 			return
-		var best_sub := 0
-		var best_dist := INF
-		for i in TOTAL_SUBS:
-			var d := _get_sub_hex_world_pos(hex, i).distance_to(world_pos)
-			if d < best_dist:
-				best_dist = d
-				best_sub = i
+		var best_sub := _find_closest_sub_hex(hex, world_pos)
 		var wn := _count_sub_hex_water_neighbors(hex, best_sub)
 		if wn < 1 or wn > 2:
-			_invalidate_draw_cache()
-			queue_redraw()
+			_needs_overlay_rebuild = true
 			return
 		for nb in _get_sub_hex_neighbors(hex, best_sub):
 			if river_cells.has(nb["hex"]) and nb["sub"] in river_cells[nb["hex"]]:
 				if _count_sub_hex_water_neighbors(nb["hex"], nb["sub"]) + 1 > 2:
-					_invalidate_draw_cache()
-					queue_redraw()
+					_needs_overlay_rebuild = true
 					return
 		_river_paint(hex, best_sub)
-	_invalidate_draw_cache()
-	queue_redraw()
+	_needs_overlay_rebuild = true
+
+
+func _find_closest_sub_hex(hex: Vector3i, world_pos: Vector3) -> int:
+	var hex_world := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var local := Vector2(world_pos.x - hex_world.x, world_pos.z - hex_world.z)
+	var best_sub := 0
+	var best_dist := INF
+	for i in TOTAL_SUBS:
+		var sub_pos := _get_sub_hex_local_pos(hex, i)
+		var d := local.distance_to(sub_pos)
+		if d < best_dist:
+			best_dist = d
+			best_sub = i
+	return best_sub
 
 
 func _river_paint(hex: Vector3i, sub_idx: int) -> void:
@@ -723,6 +928,9 @@ func _is_sub_hex_river(hex: Vector3i, sub_idx: int) -> bool:
 	return river_cells.has(hex) and sub_idx in river_cells[hex]
 
 
+# ============================================================================
+# ROAD PAINTING
+# ============================================================================
 func _road_paint(hex: Vector3i, sub_idx: int) -> void:
 	if _is_sub_hex_water(hex, sub_idx):
 		return
@@ -740,15 +948,14 @@ func _road_paint(hex: Vector3i, sub_idx: int) -> void:
 
 
 func _place_road_at(screen_pos: Vector2) -> void:
-	var world_pos := _screen_to_world(screen_pos)
-	var hex := _world_to_hex(world_pos)
+	var world_pos := _screen_to_world_3d(screen_pos)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
 	if not _cell_exists(hex):
 		return
 
 	if road_start == Vector3i(999999, 999999, -1999998):
 		road_start = hex
-		_invalidate_draw_cache()
-		queue_redraw()
+		_needs_overlay_rebuild = true
 	else:
 		if hex != road_start:
 			var path := HexGridMath.cube_line(road_start, hex)
@@ -768,60 +975,71 @@ func _place_road_at(screen_pos: Vector2) -> void:
 						_road_paint(to_hex, entry_sub)
 						break
 		road_start = Vector3i(999999, 999999, -1999998)
-		_invalidate_draw_cache()
-		queue_redraw()
+		_needs_overlay_rebuild = true
 
 
-# ============================================================================
-# COORDINATE CONVERSION
-# ============================================================================
-func _screen_to_world(screen_pos: Vector2) -> Vector2:
-	var viewport_size := get_viewport().get_visible_rect().size
-	var center := viewport_size * 0.5
-	return (screen_pos - center) / camera_zoom + camera_pos
-
-
-func _world_to_screen(world_pos: Vector2) -> Vector2:
-	var viewport_size := get_viewport().get_visible_rect().size
-	var center := viewport_size * 0.5
-	return (world_pos - camera_pos) * camera_zoom + center
-
-
-func _world_to_hex(world_pos: Vector2) -> Vector3i:
-	var q := HexGridMath.TWO_THIRDS * world_pos.x / HEX_SIZE
-	var r := HexGridMath.INV_SQRT3 * world_pos.y / HEX_SIZE - HexGridMath.ONE_THIRD * world_pos.x / HEX_SIZE
-	var cube := Vector3(q, r, -q - r)
-	return HexGridMath.cube_round(cube)
-
-
-func _cell_exists(hex: Vector3i) -> bool:
-	return cells.has(hex)
-
-
-func _get_or_create_cell(hex: Vector3i) -> HexCellData:
-	if cells.has(hex):
-		return cells[hex]
-	return null
-
-
-func _elevation_to_biome(n: float) -> int:
-	if n < -0.5:
-		return BIOME_DEEP_WATER
-	elif n < -0.3:
-		return BIOME_WATER
-	elif n < -0.15:
-		return BIOME_BEACH
-	elif n < 0.2:
-		return BIOME_GRASS
-	elif n < 0.4:
-		return BIOME_DIRT
+func _place_block_at(screen_pos: Vector2) -> void:
+	var world_pos := _screen_to_world_3d(screen_pos)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	if not _cell_exists(hex):
+		return
+	if placed_blocks.has(hex):
+		placed_blocks.erase(hex)
+		_free_block_instance(hex)
 	else:
-		return BIOME_STONE
+		placed_blocks[hex] = true
+		_create_block_instance(hex)
+	_needs_overlay_rebuild = true
 
 
-func _elevation_to_color(e: float) -> Color:
-	var t: float = clampf((e + 1.0) * 0.5, 0.0, 1.0)
-	return Color(t, t, t, 0.4)
+func _create_block_instance(hex: Vector3i) -> void:
+	if _block_instances.has(hex):
+		return
+	var cell: HexCellData = cells[hex]
+	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var height := _get_cell_height(cell)
+	var mi := MeshInstance3D.new()
+	mi.mesh = _hex_grass_mesh
+	mi.rotation_degrees.y = 30.0
+	mi.position = Vector3(hpos.x, height, hpos.z)
+	mi.scale.y = maxf(height, 0.05)
+	_blocks_container.add_child(mi)
+	_block_instances[hex] = mi
+
+
+func _free_block_instance(hex: Vector3i) -> void:
+	if _block_instances.has(hex):
+		var mi: MeshInstance3D = _block_instances[hex]
+		_block_instances.erase(hex)
+		if is_instance_valid(mi):
+			mi.queue_free()
+
+
+func _free_all_block_instances() -> void:
+	for hex in _block_instances:
+		var mi: MeshInstance3D = _block_instances[hex]
+		if is_instance_valid(mi):
+			mi.queue_free()
+	_block_instances.clear()
+
+
+func _rebuild_block_instances() -> void:
+	_free_all_block_instances()
+	for hex in placed_blocks:
+		_create_block_instance(hex)
+
+
+func _update_block_instances() -> void:
+	for hex in placed_blocks:
+		if not _block_instances.has(hex):
+			_create_block_instance(hex)
+			continue
+		var cell: HexCellData = cells[hex]
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var height := _get_cell_height(cell)
+		var mi: MeshInstance3D = _block_instances[hex]
+		mi.position = Vector3(hpos.x, height, hpos.z)
+		mi.scale.y = maxf(height, 0.05)
 
 
 # ============================================================================
@@ -1206,8 +1424,8 @@ func _paint_river_path(path: Array[Vector3i]) -> void:
 			continue
 		_river_paint(hex, 0)
 		if idx < path.size() - 1:
-			var next: Vector3i = path[idx + 1]
-			var diff := next - hex
+			var next_hex: Vector3i = path[idx + 1]
+			var diff := next_hex - hex
 			for d in 6:
 				if HexGridMath.cube_direction(d) == diff:
 					var exit_sub: int = ((6 - d) % 6) + 1
@@ -1227,22 +1445,22 @@ func _paint_river_path(path: Array[Vector3i]) -> void:
 # ============================================================================
 # SUB-HEX POSITIONS
 # ============================================================================
-func _get_sub_hex_world_pos(parent_hex: Vector3i, sub_idx: int) -> Vector2:
-	var parent_world := HexGridMath.cube_to_world_flat_top(parent_hex, HEX_SIZE)
-	var parent_2d := Vector2(parent_world.x, parent_world.z)
+func _get_sub_hex_local_pos(parent_hex: Vector3i, sub_idx: int) -> Vector2:
 	if sub_idx == 0:
-		return parent_2d
+		return Vector2.ZERO
 	elif sub_idx >= VERTEX_OFFSET:
 		var vi: int = sub_idx - VERTEX_OFFSET
 		var angle := deg_to_rad(60.0 * float(vi))
-		return parent_2d + Vector2(cos(angle), sin(angle)) * HEX_SIZE
+		return Vector2(cos(angle), sin(angle)) * HEX_SIZE
 	else:
 		var angle := deg_to_rad(30.0 + 60.0 * float(sub_idx - 1))
-		return parent_2d + Vector2(cos(angle), sin(angle)) * SUB_HEX_DIST
+		return Vector2(cos(angle), sin(angle)) * SUB_HEX_DIST
 
 
-func _get_sub_hex_screen_pos(parent_hex: Vector3i, sub_idx: int) -> Vector2:
-	return _world_to_screen(_get_sub_hex_world_pos(parent_hex, sub_idx))
+func _get_sub_hex_world_pos(parent_hex: Vector3i, sub_idx: int) -> Vector3:
+	var hex_world := HexGridMath.cube_to_world_flat_top(parent_hex, HEX_SIZE)
+	var local := _get_sub_hex_local_pos(parent_hex, sub_idx)
+	return Vector3(hex_world.x + local.x, 0.0, hex_world.z + local.y)
 
 
 func _vertex_key(hex: Vector3i, vi: int) -> int:
@@ -1271,107 +1489,139 @@ func _is_vertex_road(hex: Vector3i, vi: int) -> bool:
 
 
 # ============================================================================
-# HEX POLYGON POINTS
-# ============================================================================
-func _hex_corners(center: Vector2, size: float) -> PackedVector2Array:
-	var points := PackedVector2Array()
-	points.resize(6)
-	for i in 6:
-		var angle := deg_to_rad(60.0 * float(i))
-		points[i] = center + Vector2(cos(angle), sin(angle)) * size
-	return points
-
-
-# ============================================================================
 # VISIBLE HEX RANGE
 # ============================================================================
 func _get_visible_hex_range() -> Array[Vector3i]:
 	var viewport_size := get_viewport().get_visible_rect().size
-	var half_view := viewport_size * 0.5 / camera_zoom
-	var margin := VIEW_MARGIN / camera_zoom
 
-	var tl := camera_pos - half_view - Vector2(margin, margin)
-	var br := camera_pos + half_view + Vector2(margin, margin)
+	var corners := [
+		Vector2(0, 0),
+		Vector2(viewport_size.x, 0),
+		Vector2(0, viewport_size.y),
+		Vector2(viewport_size.x, viewport_size.y),
+		Vector2(viewport_size.x * 0.5, viewport_size.y * 0.5),
+	]
+	var ground_points: Array[Vector3] = []
+	for corner in corners:
+		var gp := _screen_to_world_3d(corner)
+		if gp.x != INF:
+			ground_points.append(gp)
 
-	var c00 := _world_to_hex(tl)
-	var c10 := _world_to_hex(Vector2(br.x, tl.y))
-	var c01 := _world_to_hex(Vector2(tl.x, br.y))
-	var c11 := _world_to_hex(br)
+	if ground_points.is_empty():
+		var center_hex := HexGridMath.world_to_cube_flat_top(camera_pivot, HEX_SIZE)
+		return _spiral_range(center_hex, 5)
 
-	var center_hex := _world_to_hex(camera_pos)
+	var min_x := ground_points[0].x
+	var max_x := ground_points[0].x
+	var min_z := ground_points[0].z
+	var max_z := ground_points[0].z
+	for p in ground_points:
+		min_x = minf(min_x, p.x)
+		max_x = maxf(max_x, p.x)
+		min_z = minf(min_z, p.z)
+		max_z = maxf(max_z, p.z)
 
-	var all_corners := [c00, c10, c01, c11, center_hex]
-	var min_q := center_hex.x
-	var max_q := center_hex.x
-	var min_r := center_hex.y
-	var max_r := center_hex.y
-	for c in all_corners:
-		min_q = mini(min_q, c.x)
-		max_q = maxi(max_q, c.x)
-		min_r = mini(min_r, c.y)
-		max_r = maxi(max_r, c.y)
+	var span := maxf(max_x - min_x, max_z - min_z)
+	var margin := maxf(HEX_SIZE * 3.0, span * 0.3)
+	min_x -= margin
+	max_x += margin
+	min_z -= margin
+	max_z += margin
 
-	min_q -= 2
-	max_q += 2
-	min_r -= 2
-	max_r += 2
+	var c_min := HexGridMath.world_to_cube_flat_top(Vector3(min_x, 0, min_z), HEX_SIZE)
+	var c_max := HexGridMath.world_to_cube_flat_top(Vector3(max_x, 0, max_z), HEX_SIZE)
+	var range_min_q := mini(c_min.x, c_max.x) - 2
+	var range_max_q := maxi(c_min.x, c_max.x) + 2
+	var range_min_r := mini(c_min.y, c_max.y) - 2
+	var range_max_r := maxi(c_min.y, c_max.y) + 2
 
 	var result: Array[Vector3i] = []
-	for q in range(min_q, max_q + 1):
-		for r in range(min_r, max_r + 1):
-			var s := -q - r
-			var hex := Vector3i(q, r, s)
+	for q in range(range_min_q, range_max_q + 1):
+		for r in range(range_min_r, range_max_r + 1):
+			var hex := Vector3i(q, r, -q - r)
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			var hpos2d := Vector2(hpos.x, hpos.z)
-			if hpos2d.x >= tl.x - HEX_SIZE and hpos2d.x <= br.x + HEX_SIZE and \
-			   hpos2d.y >= tl.y - HEX_SIZE and hpos2d.y <= br.y + HEX_SIZE:
+			if hpos.x >= min_x - HEX_SIZE and hpos.x <= max_x + HEX_SIZE and \
+			   hpos.z >= min_z - HEX_SIZE and hpos.z <= max_z + HEX_SIZE:
 				result.append(hex)
 	return result
 
 
+func _spiral_range(center: Vector3i, radius: int) -> Array[Vector3i]:
+	var result: Array[Vector3i] = [center]
+	for r in range(1, radius + 1):
+		result.append_array(HexGridMath.cube_ring(center, r))
+	return result
+
+
 # ============================================================================
-# BATCHED HEX MESH
+# 3D MESH: HEX PRISM TEMPLATE
 # ============================================================================
-func _build_hex_mesh() -> void:
+func _create_hex_prism_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+
+	var top_verts: PackedVector3Array = PackedVector3Array()
+	var bot_verts: PackedVector3Array = PackedVector3Array()
+	for i in 6:
+		var angle := deg_to_rad(60.0 * float(i))
+		var x := cos(angle)
+		var z := sin(angle)
+		top_verts.append(Vector3(x, 1.0, z))
+		bot_verts.append(Vector3(x, 0.0, z))
+
+	var top_center := Vector3(0.0, 1.0, 0.0)
+	for i in 6:
+		var next_i := (i + 1) % 6
+		st.add_vertex(top_center)
+		st.add_vertex(top_verts[i])
+		st.add_vertex(top_verts[next_i])
+
+	var bot_center := Vector3(0.0, 0.0, 0.0)
+	for i in 6:
+		var next_i := (i + 1) % 6
+		st.add_vertex(bot_center)
+		st.add_vertex(bot_verts[next_i])
+		st.add_vertex(bot_verts[i])
+
+	for i in 6:
+		var next_i := (i + 1) % 6
+		st.add_vertex(bot_verts[i])
+		st.add_vertex(top_verts[i])
+		st.add_vertex(top_verts[next_i])
+		st.add_vertex(bot_verts[i])
+		st.add_vertex(top_verts[next_i])
+		st.add_vertex(bot_verts[next_i])
+
+	st.generate_normals()
+	return st.commit()
+
+
+# ============================================================================
+# 3D MESH: REBUILD MULTIMESH
+# ============================================================================
+func _rebuild_hex_multimesh() -> void:
 	var visible_hexes := _cached_visible_hexes
 	var hex_count := 0
 	for hex in visible_hexes:
 		if _cell_exists(hex):
 			hex_count += 1
 	if hex_count == 0:
-		_hex_mesh = null
-		_hex_grid_lines = PackedVector2Array()
+		hex_multimesh_instance.multimesh = null
 		return
 
-	# Pre-compute cos/sin for hex corners
-	var cos_arr: Array[float] = []
-	var sin_arr: Array[float] = []
-	for i in 6:
-		var angle := deg_to_rad(60.0 * float(i))
-		cos_arr.append(cos(angle))
-		sin_arr.append(sin(angle))
+	var mm := MultiMesh.new()
+	mm.mesh = _hex_prism_mesh
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.instance_count = hex_count
 
-	var verts := PackedVector2Array()
-	var colors := PackedColorArray()
-	var indices := PackedInt32Array()
-	verts.resize(hex_count * 7)
-	colors.resize(hex_count * 7)
-	indices.resize(hex_count * 18)
-
-	var grid_lines := PackedVector2Array()
-	var vi := 0
-	var ii := 0
-	var hi := 0
-
+	var idx := 0
 	for hex in visible_hexes:
 		if not _cell_exists(hex):
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var screen_pos := _world_to_screen(Vector2(hpos.x, hpos.z))
-		var sz := HEX_SIZE * camera_zoom
-
-		# Compute final composited color
+		var height := _get_cell_height(cell)
 		var draw_color := cell.color
 		if show_elevation_shade:
 			var elev_col := _elevation_to_color(cell.elevation)
@@ -1381,172 +1631,117 @@ func _build_hex_mesh() -> void:
 			var height_col := Color(brightness, brightness, brightness, 0.35)
 			draw_color = draw_color.lerp(height_col, 0.35)
 
-		# Center vertex
-		var base_vi := vi
-		verts[vi] = screen_pos
-		colors[vi] = draw_color
-		vi += 1
+		var t := Transform3D(Basis().scaled(Vector3(HEX_SIZE, height, HEX_SIZE)), Vector3(hpos.x, 0.0, hpos.z))
+		mm.set_instance_transform(idx, t)
+		mm.set_instance_color(idx, draw_color)
+		idx += 1
 
-		# 6 corner vertices
-		for c in 6:
-			verts[vi] = screen_pos + Vector2(cos_arr[c], sin_arr[c]) * sz
-			colors[vi] = draw_color
-			vi += 1
-
-		# 6 triangles (fan from center)
-		for c in 6:
-			indices[ii] = base_vi
-			indices[ii + 1] = base_vi + 1 + c
-			indices[ii + 2] = base_vi + 1 + (c + 1) % 6
-			ii += 3
-
-		# Grid lines
-		if show_grid:
-			for c in 6:
-				grid_lines.append(verts[base_vi + 1 + c])
-				grid_lines.append(verts[base_vi + 1 + (c + 1) % 6])
-
-		hi += 1
-
-	# Build ArrayMesh
-	_hex_mesh = ArrayMesh.new()
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_COLOR] = colors
-	arrays[Mesh.ARRAY_INDEX] = indices
-	_hex_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	_hex_grid_lines = grid_lines
+	hex_multimesh_instance.multimesh = mm
 
 
 # ============================================================================
-# RENDERING
+# 3D MESH: REBUILD OVERLAY (rivers, roads, debug)
 # ============================================================================
-func _draw() -> void:
-	_ensure_draw_cache()
-	var visible_set := _cached_visible_set
+func _rebuild_overlay_mesh() -> void:
+	var imm := ImmediateMesh.new()
+	imm.clear_surfaces()
+	imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 
-	# Draw all hex fills in one batched call
-	if _hex_mesh != null:
-		draw_mesh(_hex_mesh, null)
+	for hex in _cached_visible_rivers:
+		if not river_cells.has(hex) or not _cell_exists(hex):
+			continue
+		var cell: HexCellData = cells[hex]
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var height := _get_cell_height(cell) + 0.05
+		for sub_idx in river_cells[hex]:
+			var local := _get_sub_hex_local_pos(hex, sub_idx)
+			var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+			_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, Color(0.2, 0.45, 0.75, 0.75))
 
-	# Draw grid lines in one batched call
-	if show_grid and not _hex_grid_lines.is_empty():
-		draw_multiline(_hex_grid_lines, Color(0, 0, 0, 0.15), 1.0)
+	for key in _cached_visible_vertex_rivers:
+		var vdata: Dictionary = _get_vertex_data(key)
+		if not vdata.has("hex") or not vdata.has("vi"):
+			continue
+		var hex: Vector3i = vdata["hex"]
+		var vi: int = vdata["vi"]
+		if not _cell_exists(hex):
+			continue
+		var cell: HexCellData = cells[hex]
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var height := _get_cell_height(cell) + 0.05
+		var local := _get_sub_hex_local_pos(hex, VERTEX_OFFSET + vi)
+		var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+		_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, Color(0.2, 0.45, 0.75, 0.75))
+
+	for road in roads:
+		var from_hex: Vector3i = road["from"]
+		var to_hex: Vector3i = road["to"]
+		if not _cell_exists(from_hex) or not _cell_exists(to_hex):
+			continue
+		_add_road_overlay_tris(imm, from_hex, to_hex, Color(0.6, 0.35, 0.15, 0.9))
 
 	if show_overlay:
 		for hex in _cached_visible_hexes:
-			_draw_sub_hex_overlay(hex)
-
-	for hex in _cached_visible_rivers:
-		_draw_river_hex(hex)
-
-	for key in _cached_visible_vertex_rivers:
-		_draw_vertex_river(key)
-
-	for road in roads:
-		if visible_set.has(road["from"]) or visible_set.has(road["to"]):
-			_draw_road_line(road["from"], road["to"])
-
-	if tool_mode == 2 and road_start != Vector3i(999999, 999999, -1999998) and _cell_exists(road_start):
-		var mouse_screen := get_viewport().get_mouse_position()
-		var mouse_world := _screen_to_world(mouse_screen)
-		var mouse_hex := _world_to_hex(mouse_world)
-		if _cell_exists(mouse_hex):
-			var path := HexGridMath.cube_line(road_start, mouse_hex)
-			for i in range(path.size() - 1):
-				_draw_road_line(path[i], path[i + 1], Color(1, 1, 0.5, 0.4))
-		var start_screen := _world_to_screen(cells[road_start].get_world_position(HEX_SIZE))
-		draw_circle(start_screen, 6.0, Color(1, 1, 0.2, 0.8))
+			if not _cell_exists(hex):
+				continue
+			var cell: HexCellData = cells[hex]
+			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+			var height := _get_cell_height(cell) + 0.03
+			for i in TOTAL_SUBS:
+				var local := _get_sub_hex_local_pos(hex, i)
+				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+				_add_flat_hex_wireframe(imm, center, SUB_HEX_SIZE, Color(1, 1, 1, 0.25))
 
 	if tool_mode == 1:
-		_draw_river_debug()
+		_add_river_debug_overlay_tris(imm)
+
+	imm.surface_end()
+	overlay_mesh_instance.mesh = imm
 
 
-func _draw_river_debug() -> void:
-	var mouse_screen := get_viewport().get_mouse_position()
-	var mouse_world := _screen_to_world(mouse_screen)
-	var hex := _world_to_hex(mouse_world)
-	if not _cell_exists(hex):
-		return
-	var best_sub := 0
-	var best_dist := INF
-	for i in TOTAL_SUBS:
-		var d := _get_sub_hex_world_pos(hex, i).distance_to(mouse_world)
-		if d < best_dist:
-			best_dist = d
-			best_sub = i
-	for i in TOTAL_SUBS:
-		var result: Array = _can_place_river(hex, i)
-		var ok: bool = result[0]
-		var sub_screen := _get_sub_hex_screen_pos(hex, i)
-		var sz := SUB_HEX_SIZE * camera_zoom
-		var sub_corners := _hex_corners(sub_screen, sz)
-		if ok:
-			var fill := Color(0.2, 0.8, 0.2, 0.25)
-			if i == best_sub:
-				fill = Color(0.2, 0.9, 0.2, 0.4)
-			draw_colored_polygon(sub_corners, fill)
-			var outline_col := Color(0.2, 0.9, 0.2, 0.5) if i == best_sub else Color(0.2, 0.7, 0.2, 0.3)
-			draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), outline_col, 1.5)
-		else:
-			var fill := Color(0.8, 0.2, 0.2, 0.25)
-			if i == best_sub:
-				fill = Color(0.9, 0.2, 0.2, 0.4)
-			draw_colored_polygon(sub_corners, fill)
-			var outline_col := Color(0.9, 0.2, 0.2, 0.5) if i == best_sub else Color(0.7, 0.2, 0.2, 0.3)
-			draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), outline_col, 1.5)
-	var can_place := _can_place_river(hex, best_sub)
-	if not can_place[0]:
-		var reason: String = can_place[1]
-		var hex_screen := _world_to_screen(Vector2(
-			HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE).x,
-			HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE).z
-		))
-		var font := ThemeDB.fallback_font
-		var text_pos := hex_screen + Vector2(0, HEX_SIZE * camera_zoom * 0.5 + 14)
-		draw_string(font, text_pos, reason, HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color.BLACK)
-		draw_string(font, text_pos + Vector2(-1, -1), reason, HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color.WHITE)
+func _add_flat_hex_tris(imm: ImmediateMesh, center: Vector3, size: float, col: Color) -> void:
+	for i in 6:
+		var angle1 := deg_to_rad(60.0 * float(i))
+		var angle2 := deg_to_rad(60.0 * float((i + 1) % 6))
+		var v1 := center + Vector3(cos(angle1), 0.0, sin(angle1)) * size
+		var v2 := center + Vector3(cos(angle2), 0.0, sin(angle2)) * size
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(center)
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(v1)
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(v2)
 
 
-func _draw_sub_hex_overlay(hex: Vector3i) -> void:
-	if not _cell_exists(hex):
-		return
-	for i in TOTAL_SUBS:
-		var sub_screen := _get_sub_hex_screen_pos(hex, i)
-		var sz := SUB_HEX_SIZE * camera_zoom
-		var sub_corners := _hex_corners(sub_screen, sz)
-		var fill := Color(1, 1, 1, 0.05)
-		draw_colored_polygon(sub_corners, fill)
-		draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), Color(1, 1, 1, 0.2), 1.0)
+func _add_flat_hex_wireframe(imm: ImmediateMesh, center: Vector3, size: float, col: Color) -> void:
+	var up := Vector3.UP * 0.02
+	var thin := 0.015
+	for i in 6:
+		var angle1 := deg_to_rad(60.0 * float(i))
+		var angle2 := deg_to_rad(60.0 * float((i + 1) % 6))
+		var v1 := center + Vector3(cos(angle1), 0.0, sin(angle1)) * size
+		var v2 := center + Vector3(cos(angle2), 0.0, sin(angle2)) * size
+		var edge := v2 - v1
+		var perp := Vector3(-edge.z, 0.0, edge.x).normalized() * thin
+		var a := v1 + perp + up
+		var b := v1 - perp + up
+		var c := v2 - perp + up
+		var d := v2 + perp + up
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(a)
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(b)
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(c)
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(a)
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(c)
+		imm.surface_set_color(col)
+		imm.surface_add_vertex(d)
 
 
-func _draw_river_hex(hex: Vector3i) -> void:
-	if not river_cells.has(hex) or not _cell_exists(hex):
-		return
-	for sub_idx in river_cells[hex]:
-		var sub_screen := _get_sub_hex_screen_pos(hex, sub_idx)
-		var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
-		draw_colored_polygon(sub_corners, Color(0.2, 0.45, 0.75, 0.7))
-		draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), Color(0.15, 0.3, 0.6, 0.9), 1.5)
-
-
-func _draw_vertex_river(key: int) -> void:
-	var vdata: Dictionary = _get_vertex_data(key)
-	if not vdata.has("hex") or not vdata.has("vi"):
-		return
-	var hex: Vector3i = vdata["hex"]
-	var vi: int = vdata["vi"]
-	var sub_screen := _get_sub_hex_screen_pos(hex, VERTEX_OFFSET + vi)
-	var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
-	draw_colored_polygon(sub_corners, Color(0.2, 0.45, 0.75, 0.7))
-	draw_polyline(sub_corners + PackedVector2Array([sub_corners[0]]), Color(0.15, 0.3, 0.6, 0.9), 1.5)
-
-
-func _draw_road_line(from_hex: Vector3i, to_hex: Vector3i, col: Color = Color(0.6, 0.35, 0.15, 0.9)) -> void:
-	if not _cell_exists(from_hex) or not _cell_exists(to_hex):
-		return
-
+func _add_road_overlay_tris(imm: ImmediateMesh, from_hex: Vector3i, to_hex: Vector3i, col: Color) -> void:
 	var diff := to_hex - from_hex
 	var dir := -1
 	for d in 6:
@@ -1555,22 +1750,101 @@ func _draw_road_line(from_hex: Vector3i, to_hex: Vector3i, col: Color = Color(0.
 			break
 
 	if not _is_sub_hex_water(from_hex, 0):
-		_draw_filled_sub(from_hex, 0, col)
-
+		_add_sub_hex_fill_tris(imm, from_hex, 0, col)
 	if dir >= 0:
 		var exit_sub := ((6 - dir) % 6) + 1
 		if not _is_sub_hex_water(from_hex, exit_sub):
-			_draw_filled_sub(from_hex, exit_sub, col)
+			_add_sub_hex_fill_tris(imm, from_hex, exit_sub, col)
 		var entry_dir := (dir + 3) % 6
 		var entry_sub := ((6 - entry_dir) % 6) + 1
 		if not _is_sub_hex_water(to_hex, entry_sub):
-			_draw_filled_sub(to_hex, entry_sub, col)
-
+			_add_sub_hex_fill_tris(imm, to_hex, entry_sub, col)
 	if not _is_sub_hex_water(to_hex, 0):
-		_draw_filled_sub(to_hex, 0, col)
+		_add_sub_hex_fill_tris(imm, to_hex, 0, col)
 
 
-func _draw_filled_sub(hex: Vector3i, sub_idx: int, col: Color) -> void:
-	var sub_screen := _get_sub_hex_screen_pos(hex, sub_idx)
-	var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
-	draw_colored_polygon(sub_corners, col)
+func _add_sub_hex_fill_tris(imm: ImmediateMesh, hex: Vector3i, sub_idx: int, col: Color) -> void:
+	if not _cell_exists(hex):
+		return
+	var cell: HexCellData = cells[hex]
+	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var height := _get_cell_height(cell) + 0.06
+	var local := _get_sub_hex_local_pos(hex, sub_idx)
+	var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+	_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, col)
+
+
+func _add_river_debug_overlay_tris(imm: ImmediateMesh) -> void:
+	var hex := _get_mouse_hex()
+	if not _cell_exists(hex):
+		return
+	var cell: HexCellData = cells[hex]
+	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var height := _get_cell_height(cell) + 0.08
+
+	var world_pos := _screen_to_world_3d(get_viewport().get_mouse_position())
+	var local := Vector2(world_pos.x - hpos.x, world_pos.z - hpos.z)
+	var best_sub := 0
+	var best_dist := INF
+	for i in TOTAL_SUBS:
+		var sub_pos := _get_sub_hex_local_pos(hex, i)
+		var d := local.distance_to(sub_pos)
+		if d < best_dist:
+			best_dist = d
+			best_sub = i
+
+	for i in TOTAL_SUBS:
+		var result: Array = _can_place_river(hex, i)
+		var ok: bool = result[0]
+		var sub_pos := _get_sub_hex_local_pos(hex, i)
+		var center := Vector3(hpos.x + sub_pos.x, height, hpos.z + sub_pos.y)
+		if ok:
+			var fill_col := Color(0.2, 0.8, 0.2, 0.3)
+			if i == best_sub:
+				fill_col = Color(0.2, 0.9, 0.2, 0.5)
+			_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, fill_col)
+		else:
+			var fill_col := Color(0.8, 0.2, 0.2, 0.3)
+			if i == best_sub:
+				fill_col = Color(0.9, 0.2, 0.2, 0.5)
+			_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, fill_col)
+
+
+# ============================================================================
+# 3D MESH: GRID LINES
+# ============================================================================
+func _rebuild_grid_lines() -> void:
+	if not show_grid:
+		grid_lines_mesh_instance.mesh = null
+		return
+
+	var imm := ImmediateMesh.new()
+	imm.clear_surfaces()
+	imm.surface_begin(Mesh.PRIMITIVE_LINES)
+
+	var grid_col := Color(0, 0, 0, 0.2)
+	for hex in _cached_visible_hexes:
+		if not _cell_exists(hex):
+			continue
+		var cell: HexCellData = cells[hex]
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var height := _get_cell_height(cell) + 0.02
+		var cos_arr: PackedFloat32Array = PackedFloat32Array()
+		var sin_arr: PackedFloat32Array = PackedFloat32Array()
+		for i in 6:
+			var angle := deg_to_rad(60.0 * float(i))
+			cos_arr.append(cos(angle))
+			sin_arr.append(sin(angle))
+		for i in 6:
+			var next_i := (i + 1) % 6
+			var x1 := hpos.x + cos_arr[i] * HEX_SIZE
+			var z1 := hpos.z + sin_arr[i] * HEX_SIZE
+			var x2 := hpos.x + cos_arr[next_i] * HEX_SIZE
+			var z2 := hpos.z + sin_arr[next_i] * HEX_SIZE
+			imm.surface_set_color(grid_col)
+			imm.surface_add_vertex(Vector3(x1, height, z1))
+			imm.surface_set_color(grid_col)
+			imm.surface_add_vertex(Vector3(x2, height, z2))
+
+	imm.surface_end()
+	grid_lines_mesh_instance.mesh = imm
