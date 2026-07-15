@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://demplwvwjenmv"]
 
-[ext_resource type="Script" path="res://HexGrid/hex_map.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://cv1hfi2uig70i" path="res://HexGrid/hex_map.gd" id="1_script"]
 
-[node name="HexMap" type="Node2D"]
+[node name="HexMap" type="Node2D" unique_id=1964453637]
 script = ExtResource("1_script")

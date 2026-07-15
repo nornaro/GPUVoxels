@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cfbx3fh0h52k4"]
+
+[ext_resource type="Script" uid="uid://dpsk6syg3bbf3" path="res://test_shader.gd" id="1_gi6pi"]
+
+[node name="test_shader" type="Node2D" unique_id=514664845]
+script = ExtResource("1_gi6pi")
