@@ -199,7 +199,7 @@ func _discover_visible_chunks() -> void:
 	for hex in _cached_visible_hexes:
 		var ck := _chunk_key(hex)
 		if not chunk_manager._loaded_chunk_origins.has(ck):
-			if not _pending_chunks.has(ck):
+			if not _pending_chunks.has(ck) and _pending_chunks.size() < MAX_NEW_CHUNKS_QUEUED_PER_FRAME:
 				_pending_chunks.append(ck)
 
 
@@ -207,13 +207,16 @@ func _process_pending_batch() -> void:
 	if _pending_chunks.is_empty():
 		return
 	var batch: Array[Vector2i] = []
-	batch.assign(_pending_chunks)
-	_pending_chunks.clear()
+	var count := mini(_pending_chunks.size(), MAX_TERRAIN_PER_FRAME)
+	for i in count:
+		batch.append(_pending_chunks[i])
+	_pending_chunks = _pending_chunks.slice(count)
 	chunk_manager.generate_batch(batch)
-	_needs_save = true
 	for ck in batch:
 		if _chunk_has_cells(ck) and not chunks_with_rivers.has(ck):
 			_pending_rivers.append(ck)
+	if _pending_chunks.is_empty():
+		_needs_save = true
 
 
 func _process_pending_rivers() -> void:
@@ -226,10 +229,11 @@ func _process_pending_rivers() -> void:
 			continue
 		if _chunk_all_neighbors_loaded(ck):
 			_ensure_chunk_rivers(ck)
-			_needs_save = true
 			processed += 1
 		_pending_rivers.remove_at(i)
 		i += 1
+	if processed > 0 and _pending_rivers.is_empty():
+		_needs_save = true
 
 
 func _chunk_has_cells(ck: Vector2i) -> bool:
