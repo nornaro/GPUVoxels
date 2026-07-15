@@ -50,6 +50,7 @@ var vertex_subs: Dictionary = {}
 var show_overlay: bool = false
 var show_grid: bool = false
 var show_height: bool = false
+var show_elevation_shade: bool = false
 
 var roads: Array[Dictionary] = []
 
@@ -87,6 +88,8 @@ var _cached_visible_hexes: Array[Vector3i] = []
 var _cached_visible_set: Dictionary = {}
 var _cached_visible_rivers: Array = []
 var _cached_visible_vertex_rivers: Array = []
+var _needs_save: bool = false
+var _tool_flash_timer: float = 0.0
 var _cached_camera_pos: Vector2 = Vector2(NAN, NAN)
 var _cached_camera_zoom: float = NAN
 var _last_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
@@ -96,6 +99,10 @@ var _last_debug_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
 func _ready() -> void:
 	chunk_manager = ChunkManager.new(cells)
 	_setup_ui()
+	var save_path := "res://map_save.json"
+	if FileAccess.file_exists(save_path):
+		if _load_map_from(save_path):
+			return
 	queue_redraw()
 
 
@@ -131,17 +138,24 @@ func _setup_ui() -> void:
 
 func _update_ui() -> void:
 	tool_label.text = "Tool: %s [1/2/3]" % TOOL_NAMES[tool_mode]
-	info_label.text = "Pan: WASD/MMB | Zoom: Scroll | Grid: G | Overlay: H | Height: V | Esc: Cancel"
+	info_label.text = "Pan: WASD/MMB | Zoom: Scroll | Grid: G | Overlay: H | Height: V | ElevShade: Ins | Regen: R | QSave: F6 | QLoad: F7 | Save: F8 | Load: F9 | Esc: Cancel"
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_discover_visible_chunks()
 	_process_pending_batch()
 	_process_pending_rivers()
+	if _tool_flash_timer > 0.0:
+		_tool_flash_timer -= delta
+		if _tool_flash_timer <= 0.0:
+			_update_ui()
 	if not _pending_chunks.is_empty() or not _pending_rivers.is_empty():
 		_invalidate_draw_cache()
 		queue_redraw()
 	else:
+		if _needs_save:
+			_save_map()
+			_needs_save = false
 		_update_hover_info()
 
 
@@ -185,7 +199,7 @@ func _discover_visible_chunks() -> void:
 	for hex in _cached_visible_hexes:
 		var ck := _chunk_key(hex)
 		if not chunk_manager._loaded_chunk_origins.has(ck):
-			if not _pending_chunks.has(ck) and _pending_chunks.size() < MAX_NEW_CHUNKS_QUEUED_PER_FRAME:
+			if not _pending_chunks.has(ck):
 				_pending_chunks.append(ck)
 
 
@@ -196,6 +210,7 @@ func _process_pending_batch() -> void:
 	batch.assign(_pending_chunks)
 	_pending_chunks.clear()
 	chunk_manager.generate_batch(batch)
+	_needs_save = true
 	for ck in batch:
 		if _chunk_has_cells(ck) and not chunks_with_rivers.has(ck):
 			_pending_rivers.append(ck)
@@ -211,6 +226,7 @@ func _process_pending_rivers() -> void:
 			continue
 		if _chunk_all_neighbors_loaded(ck):
 			_ensure_chunk_rivers(ck)
+			_needs_save = true
 			processed += 1
 		_pending_rivers.remove_at(i)
 		i += 1
@@ -371,6 +387,9 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_V:
 			show_height = not show_height
 			queue_redraw()
+		KEY_INSERT:
+			show_elevation_shade = not show_elevation_shade
+			queue_redraw()
 		KEY_ESCAPE:
 			tool_mode = 0
 			road_start = Vector3i(999999, 999999, -1999998)
@@ -380,6 +399,114 @@ func _handle_key(event: InputEventKey) -> void:
 			_invalidate_draw_cache()
 			_update_ui()
 			queue_redraw()
+		KEY_R:
+			_regenerate_map()
+		KEY_F6:
+			_quick_save()
+		KEY_F7:
+			_quick_load()
+		KEY_F8:
+			_save()
+		KEY_F9:
+			_load()
+
+
+func _regenerate_map() -> void:
+	cells.clear()
+	chunk_manager.cells = cells
+	chunk_manager._loaded_chunk_origins.clear()
+	chunk_manager.randomize_seeds()
+	chunks_with_rivers.clear()
+	river_cells.clear()
+	road_cells.clear()
+	vertex_subs.clear()
+	roads.clear()
+	_pending_chunks.clear()
+	_pending_rivers.clear()
+	_needs_save = false
+	_invalidate_draw_cache()
+	queue_redraw()
+
+
+func _save_map() -> void:
+	var save_path := "res://map_save.json"
+	chunk_manager.save_map(save_path, river_cells, road_cells, vertex_subs, chunks_with_rivers, roads)
+	_save_map_image()
+
+
+func _load_map_from(path: String) -> bool:
+	var loaded: Dictionary = chunk_manager.load_map(path)
+	if loaded.is_empty():
+		return false
+	river_cells = loaded.get("river_cells", {})
+	road_cells = loaded.get("road_cells", {})
+	vertex_subs = loaded.get("vertex_subs", {})
+	chunks_with_rivers = loaded.get("chunks_with_rivers", {})
+	roads.clear()
+	for r in loaded.get("roads", []):
+		roads.append(r)
+	_invalidate_draw_cache()
+	queue_redraw()
+	return true
+
+
+func _quick_save() -> void:
+	_save_map()
+	_tool_flash("Quick Saved")
+
+
+func _quick_load() -> void:
+	if _load_map_from("res://map_save.json"):
+		_tool_flash("Quick Loaded")
+
+
+func _save() -> void:
+	chunk_manager.save_map("res://map_save_slot.json", river_cells, road_cells, vertex_subs, chunks_with_rivers, roads)
+	_save_map_image()
+	_tool_flash("Saved")
+
+
+func _load() -> void:
+	if _load_map_from("res://map_save_slot.json"):
+		_tool_flash("Loaded")
+
+
+func _tool_flash(msg: String) -> void:
+	tool_label.text = msg
+	_tool_flash_timer = 1.5
+
+
+func _save_map_image() -> void:
+	if cells.is_empty():
+		return
+	var min_q := 999999
+	var max_q := -999999
+	var min_r := 999999
+	var max_r := -999999
+	for hex in cells:
+		var hq: int = int(hex.x)
+		var hr: int = int(hex.y)
+		min_q = mini(min_q, hq)
+		max_q = maxi(max_q, hq)
+		min_r = mini(min_r, hr)
+		max_r = maxi(max_r, hr)
+	var img_size := 8
+	var w := (max_q - min_q + 1) * img_size
+	var h := (max_r - min_r + 1) * img_size
+	w = clampi(w, 1, 4096)
+	h = clampi(h, 1, 4096)
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	img.fill(Color.BLACK)
+	for hex in cells:
+		var c: HexCellData = cells[hex]
+		var px: int = (int(hex.x) - min_q) * img_size
+		var py: int = (int(hex.y) - min_r) * img_size
+		for dx in img_size:
+			for dy in img_size:
+				var sx: int = clampi(px + dx, 0, w - 1)
+				var sy: int = clampi(py + dy, 0, h - 1)
+				img.set_pixel(sx, sy, c.color)
+	img.save_png("res://map_image.png")
 
 
 func _paint_river_at(screen_pos: Vector2, erase: bool) -> void:
@@ -670,6 +797,11 @@ func _elevation_to_biome(n: float) -> int:
 		return BIOME_DIRT
 	else:
 		return BIOME_STONE
+
+
+func _elevation_to_color(e: float) -> Color:
+	var t: float = clampf((e + 1.0) * 0.5, 0.0, 1.0)
+	return Color(t, t, t, 0.4)
 
 
 # ============================================================================
@@ -1192,7 +1324,11 @@ func _draw() -> void:
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 		var screen_pos := _world_to_screen(Vector2(hpos.x, hpos.z))
 		var corners := _hex_corners(screen_pos, HEX_SIZE * camera_zoom)
-		draw_colored_polygon(corners, cell.color)
+		var draw_color := cell.color
+		draw_colored_polygon(corners, draw_color)
+		if show_elevation_shade:
+			var elev_col := _elevation_to_color(cell.elevation)
+			draw_colored_polygon(corners, elev_col)
 		if show_grid:
 			var grid_color := Color(0, 0, 0, 0.15)
 			draw_polyline(corners + PackedVector2Array([corners[0]]), grid_color, 1.0)
@@ -1202,13 +1338,12 @@ func _draw() -> void:
 			if not _cell_exists(hex):
 				continue
 			var cell: HexCellData = cells[hex]
-			for i in TOTAL_SUBS:
-				var h: float = cell.sub_heights[i]
-				var brightness: float = lerpf(0.4, 1.6, (h + 1.0) * 0.5)
-				var col := Color(brightness, brightness, brightness, 0.35)
-				var sub_screen := _get_sub_hex_screen_pos(hex, i)
-				var sub_corners := _hex_corners(sub_screen, SUB_HEX_SIZE * camera_zoom)
-				draw_colored_polygon(sub_corners, col)
+			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+			var screen_pos := _world_to_screen(Vector2(hpos.x, hpos.z))
+			var corners := _hex_corners(screen_pos, HEX_SIZE * camera_zoom)
+			var brightness: float = lerpf(0.4, 1.6, (cell.elevation + 1.0) * 0.5)
+			var col := Color(brightness, brightness, brightness, 0.35)
+			draw_colored_polygon(corners, col)
 
 	if show_overlay:
 		for hex in visible_hexes:
