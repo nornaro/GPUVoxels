@@ -96,6 +96,8 @@ var _last_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
 var _last_debug_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
 var _hex_mesh: ArrayMesh = null
 var _hex_grid_lines: PackedVector2Array = PackedVector2Array()
+var _cached_chunk_min: Vector2i = Vector2i.ZERO
+var _cached_chunk_max: Vector2i = Vector2i.ZERO
 
 
 func _ready() -> void:
@@ -152,7 +154,10 @@ func _process(delta: float) -> void:
 		if _tool_flash_timer <= 0.0:
 			_update_ui()
 	if not _pending_chunks.is_empty() or not _pending_rivers.is_empty():
-		_invalidate_draw_cache()
+		# Only invalidate draw cache when new cells actually appeared
+		if chunk_manager._last_batch_generated:
+			_invalidate_draw_cache()
+			chunk_manager._last_batch_generated = false
 		queue_redraw()
 	else:
 		if _needs_save:
@@ -198,21 +203,24 @@ func _update_hover_info() -> void:
 
 func _discover_visible_chunks() -> void:
 	_ensure_draw_cache()
-	for hex in _cached_visible_hexes:
-		var ck := _chunk_key(hex)
-		if not chunk_manager._loaded_chunk_origins.has(ck):
-			if not _pending_chunks.has(ck) and _pending_chunks.size() < MAX_NEW_CHUNKS_QUEUED_PER_FRAME:
-				_pending_chunks.append(ck)
+	for cq in range(_cached_chunk_min.x, _cached_chunk_max.x + 1):
+		for cr in range(_cached_chunk_min.y, _cached_chunk_max.y + 1):
+			var ck := Vector2i(cq, cr)
+			if not chunk_manager._loaded_chunk_origins.has(ck):
+				if not _pending_chunks.has(ck) and _pending_chunks.size() < MAX_NEW_CHUNKS_QUEUED_PER_FRAME:
+					_pending_chunks.append(ck)
 
 
 func _process_pending_batch() -> void:
 	if _pending_chunks.is_empty():
 		return
-	var batch: Array[Vector2i] = []
 	var count := mini(_pending_chunks.size(), MAX_TERRAIN_PER_FRAME)
+	var batch: Array[Vector2i] = []
+	batch.resize(count)
 	for i in count:
-		batch.append(_pending_chunks[i])
-	_pending_chunks = _pending_chunks.slice(count)
+		batch[i] = _pending_chunks[i]
+	for i in range(count - 1, -1, -1):
+		_pending_chunks.remove_at(i)
 	chunk_manager.generate_batch(batch)
 	for ck in batch:
 		if _chunk_has_cells(ck) and not chunks_with_rivers.has(ck):
@@ -269,6 +277,16 @@ func _ensure_draw_cache() -> void:
 	_cached_visible_set.clear()
 	for hex in _cached_visible_hexes:
 		_cached_visible_set[hex] = true
+	# Compute chunk range from visible hex range
+	if not _cached_visible_hexes.is_empty():
+		_cached_chunk_min = _chunk_key(_cached_visible_hexes[0])
+		_cached_chunk_max = _cached_chunk_min
+		for hex in _cached_visible_hexes:
+			var ck := _chunk_key(hex)
+			_cached_chunk_min.x = mini(_cached_chunk_min.x, ck.x)
+			_cached_chunk_max.x = maxi(_cached_chunk_max.x, ck.x)
+			_cached_chunk_min.y = mini(_cached_chunk_min.y, ck.y)
+			_cached_chunk_max.y = maxi(_cached_chunk_max.y, ck.y)
 	_cached_visible_rivers.clear()
 	for hex in river_cells:
 		if _cached_visible_set.has(hex):

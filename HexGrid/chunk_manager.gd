@@ -44,6 +44,7 @@ var _params_buf: RID
 var _origins_buf: RID
 var _output_buf: RID
 var _uniform_set: RID
+var _last_batch_generated: bool = false
 
 
 func _init(p_cells: Dictionary) -> void:
@@ -124,6 +125,7 @@ func generate_batch(batch: Array) -> void:
 		return
 	var bs := mini(batch.size(), MAX_BATCH)
 	_generate_batch_gpu(batch, bs)
+	_last_batch_generated = true
 
 
 func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictionary = {}, p_vertex_subs: Dictionary = {}, p_chunks_with_rivers: Dictionary = {}, p_roads: Array = []) -> void:
