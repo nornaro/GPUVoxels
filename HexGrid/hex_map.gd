@@ -43,7 +43,7 @@ const LAKE_LEVEL: float = -0.2
 
 const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.05, 0.01, 0.0]
 const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Step 0.05", "Step 0.01", "Flat"]
-var elevation_step_idx: int = 4
+var elevation_step_idx: int = 0
 
 var cells: Dictionary = {}
 var chunk_manager: ChunkManager
@@ -701,10 +701,10 @@ func _get_cell_height(cell: HexCellData) -> float:
 		return WATER_HEIGHT
 	var step: float = ELEVATION_STEPS[elevation_step_idx]
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
-	var e := cell.elevation
-	var height := e * hex_width + HEX_SIZE
 	if step <= 0.0:
-		return height
+		return HEX_SIZE
+	var e := maxf(cell.elevation, 0.0)
+	var height := e * hex_width + HEX_SIZE
 	return snappedf(height, step)
 
 
