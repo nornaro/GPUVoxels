@@ -4,7 +4,7 @@ const HEX_SIZE: float = 1.1547
 const SUB_HEX_SIZE: float = HEX_SIZE / 3.0
 const SUB_HEX_DIST: float = HEX_SIZE * 0.57735026919
 const WATER_HEIGHT: float = 0.3
-const FORCE_REGENERATE: bool = true
+const FORCE_REGENERATE: bool = false
 
 const VERTEX_NEIGHBORS: Array = [
 	[0, 1],
