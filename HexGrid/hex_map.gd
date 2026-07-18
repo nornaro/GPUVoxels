@@ -3,8 +3,8 @@ extends Node3D
 const HEX_SIZE: float = 1.1547
 const SUB_HEX_SIZE: float = HEX_SIZE / 3.0
 const SUB_HEX_DIST: float = HEX_SIZE * 0.57735026919
-const HEIGHT_SCALE: float = 15.0
 const WATER_HEIGHT: float = 0.3
+const FORCE_REGENERATE: bool = true
 
 const VERTEX_NEIGHBORS: Array = [
 	[0, 1],
@@ -41,9 +41,9 @@ var BIOME_COLORS: Array[Color] = [
 const WATER_LEVEL: float = -0.3
 const LAKE_LEVEL: float = -0.2
 
-const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.0]
-const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Flat"]
-var elevation_step_idx: int = 0
+const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.05, 0.01, 0.0]
+const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Step 0.05", "Step 0.01", "Flat"]
+var elevation_step_idx: int = 4
 
 var cells: Dictionary = {}
 var chunk_manager: ChunkManager
@@ -94,8 +94,6 @@ var panning: bool = false
 var pan_start: Vector2 = Vector2.ZERO
 var orbiting: bool = false
 var orbit_start: Vector2 = Vector2.ZERO
-
-const VIEW_MARGIN: float = 5.0
 
 var chunks_with_rivers: Dictionary = {}
 const CHUNK_SIZE: int = 10
@@ -148,7 +146,7 @@ func _ready() -> void:
 	_setup_3d()
 	_setup_ui()
 	var save_path := "res://map_save.json"
-	if FileAccess.file_exists(save_path):
+	if FileAccess.file_exists(save_path) and not FORCE_REGENERATE:
 		if _load_map_from(save_path):
 			return
 	_needs_rebuild = true
@@ -274,7 +272,7 @@ func _process(delta: float) -> void:
 			_needs_rebuild = true
 			chunk_manager._last_batch_generated = false
 	else:
-		if _needs_save:
+		if _needs_save and not FORCE_REGENERATE:
 			_save_map()
 			_needs_save = false
 		_update_hover_info()
@@ -693,27 +691,6 @@ func _cell_exists(hex: Vector3i) -> bool:
 	return cells.has(hex)
 
 
-func _get_or_create_cell(hex: Vector3i) -> HexCellData:
-	if cells.has(hex):
-		return cells[hex]
-	return null
-
-
-func _elevation_to_biome(n: float) -> int:
-	if n < -0.5:
-		return BIOME_DEEP_WATER
-	elif n < -0.3:
-		return BIOME_WATER
-	elif n < -0.15:
-		return BIOME_BEACH
-	elif n < 0.2:
-		return BIOME_GRASS
-	elif n < 0.4:
-		return BIOME_DIRT
-	else:
-		return BIOME_STONE
-
-
 func _elevation_to_color(e: float) -> Color:
 	var t: float = clampf((e + 1.0) * 0.5, 0.0, 1.0)
 	return Color(t, t, t, 0.4)
@@ -723,11 +700,11 @@ func _get_cell_height(cell: HexCellData) -> float:
 	if _is_water_biome(cell.biome):
 		return WATER_HEIGHT
 	var step: float = ELEVATION_STEPS[elevation_step_idx]
-	if step <= 0.0:
-		return HEX_SIZE
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
-	var e := maxf(cell.elevation, 0.0)
+	var e := cell.elevation
 	var height := e * hex_width + HEX_SIZE
+	if step <= 0.0:
+		return height
 	return snappedf(height, step)
 
 
@@ -805,16 +782,6 @@ func _river_erase(hex: Vector3i, sub_idx: int) -> void:
 		river_cells[hex].erase(sub_idx)
 		if river_cells[hex].is_empty():
 			river_cells.erase(hex)
-
-
-func _count_water_neighbors(hex: Vector3i) -> int:
-	var count := 0
-	for n in HexGridMath.cube_neighbors(hex):
-		if _cell_exists(n):
-			var c: HexCellData = cells[n]
-			if _is_water_biome(c.biome) or river_cells.has(n):
-				count += 1
-	return count
 
 
 func _hex_river_count(hex: Vector3i) -> int:
@@ -920,12 +887,6 @@ func _can_place_river_vertex(hex: Vector3i, vi: int) -> Array:
 			if _count_sub_hex_water_neighbors(hex, ring_sub) + 1 > 2:
 				return [false, "Would overflow nb"]
 	return [true, "OK"]
-
-
-func _is_sub_hex_river(hex: Vector3i, sub_idx: int) -> bool:
-	if sub_idx >= VERTEX_OFFSET:
-		return _is_vertex_river(hex, sub_idx - VERTEX_OFFSET)
-	return river_cells.has(hex) and sub_idx in river_cells[hex]
 
 
 # ============================================================================
@@ -1457,12 +1418,6 @@ func _get_sub_hex_local_pos(parent_hex: Vector3i, sub_idx: int) -> Vector2:
 		return Vector2(cos(angle), sin(angle)) * SUB_HEX_DIST
 
 
-func _get_sub_hex_world_pos(parent_hex: Vector3i, sub_idx: int) -> Vector3:
-	var hex_world := HexGridMath.cube_to_world_flat_top(parent_hex, HEX_SIZE)
-	var local := _get_sub_hex_local_pos(parent_hex, sub_idx)
-	return Vector3(hex_world.x + local.x, 0.0, hex_world.z + local.y)
-
-
 func _vertex_key(hex: Vector3i, vi: int) -> int:
 	var dirs: Array = VERTEX_NEIGHBORS[vi]
 	var h1 := hex
@@ -1482,10 +1437,6 @@ func _get_vertex_data(key: int) -> Dictionary:
 
 func _is_vertex_river(hex: Vector3i, vi: int) -> bool:
 	return _get_vertex_data(_vertex_key(hex, vi))["river"]
-
-
-func _is_vertex_road(hex: Vector3i, vi: int) -> bool:
-	return _get_vertex_data(_vertex_key(hex, vi))["road"]
 
 
 # ============================================================================

@@ -56,7 +56,7 @@ float snoise(vec2 v) {
 	vec3 g;
 	g.x = a0.x * x0.x + h.x * x0.y;
 	g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-	return 130.0 * dot(m, g);
+	return 70.0 * dot(m, g);
 }
 
 float fbm(vec2 pos, int seed, int octaves, float lacunarity, float gain) {
@@ -73,13 +73,26 @@ float fbm(vec2 pos, int seed, int octaves, float lacunarity, float gain) {
 	return value;
 }
 
+float remap(float v, float lo1, float hi1, float lo2, float hi2) {
+	return lo2 + (v - lo1) / (hi1 - lo1) * (hi2 - lo2);
+}
+
 int elevation_to_biome(float e) {
-	if (e < -0.5) return 0;
-	if (e < -0.3) return 1;
-	if (e < -0.15) return 2;
-	if (e < 0.2) return 3;
-	if (e < 0.4) return 4;
+	if (e < -0.3) return 0;
+	if (e < -0.1) return 1;
+	if (e < 0.1) return 2;
+	if (e < 0.4) return 3;
+	if (e < 0.7) return 4;
 	return 5;
+}
+
+float biome_to_elevation(int biome, float nval) {
+	if (biome == 0) return remap(nval, -1.0, -0.3, 0.1, 0.3);
+	if (biome == 1) return remap(nval, -0.3, -0.1, 0.15, 0.5);
+	if (biome == 2) return remap(nval, -0.1, 0.1, 0.4, 0.7);
+	if (biome == 3) return remap(nval, 0.1, 0.4, 0.7, 1.8);
+	if (biome == 4) return remap(nval, 0.4, 0.7, 1.4, 2.8);
+	return remap(nval, 0.7, 1.4, 2.2, 4.0);
 }
 
 void main() {
@@ -96,32 +109,34 @@ void main() {
 	int r = origin.y + cell.y;
 	vec2 pos = vec2(float(q), float(r));
 
-	float elevation = fbm(pos * noise_freq, int(noise_seed),
+	float nval = fbm(pos * noise_freq, int(noise_seed),
 		int(fractal_octaves), fractal_lacunarity, fractal_gain);
-	int biome = elevation_to_biome(elevation);
+
+	int biome = elevation_to_biome(nval);
+	float elevation = biome_to_elevation(biome, nval);
 
 	float sub_heights[13];
-	sub_heights[0] = round(elevation * 10.0) / 10.0;
+	sub_heights[0] = elevation;
+
+	const float HEX_SIZE = 1.1547;
+	const float INNER_DIST = HEX_SIZE * 0.57735026919;
+	const float OUTER_DIST = HEX_SIZE;
 
 	for (int i = 0; i < 6; i++) {
 		float angle = radians(30.0 + 60.0 * float(i));
-		vec2 sub_pos = pos + vec2(cos(angle), sin(angle)) * 0.57735026919;
+		vec2 sub_pos = pos + vec2(cos(angle), sin(angle)) * INNER_DIST;
 		float detail = fbm(sub_pos * detail_freq, int(detail_seed),
-			int(detail_octaves), detail_lacunarity, detail_gain) * 0.15;
-		sub_heights[i + 1] = round((elevation + detail) * 10.0) / 10.0;
+			int(detail_octaves), detail_lacunarity, detail_gain) * 0.1;
+		sub_heights[i + 1] = elevation + detail;
 	}
 
 	for (int i = 0; i < 6; i++) {
 		float angle = radians(60.0 * float(i));
-		vec2 sub_pos = pos + vec2(cos(angle), sin(angle)) * 1.0;
+		vec2 sub_pos = pos + vec2(cos(angle), sin(angle)) * OUTER_DIST;
 		float detail = fbm(sub_pos * detail_freq, int(detail_seed),
-			int(detail_octaves), detail_lacunarity, detail_gain) * 0.15;
-		sub_heights[i + 7] = round((elevation + detail) * 10.0) / 10.0;
+			int(detail_octaves), detail_lacunarity, detail_gain) * 0.1;
+		sub_heights[i + 7] = elevation + detail;
 	}
-
-	float sum = 0.0;
-	for (int i = 0; i < 13; i++) sum += sub_heights[i];
-	elevation = round(sum / 13.0 * 10.0) / 10.0;
 
 	int cells_per_chunk = ics * ics;
 	int cell_idx = cell.x * ics + cell.y;

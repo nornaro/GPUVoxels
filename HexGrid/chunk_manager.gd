@@ -3,9 +3,15 @@ extends RefCounted
 
 const CHUNK_SIZE: int = 10
 const TOTAL_SUBS: int = 13
-const CELLS_PER_CHUNK: int = CHUNK_SIZE * CHUNK_SIZE
-const VALUES_PER_CELL: int = 15
 const MAX_BATCH: int = 256
+const HEX_SIZE: float = 1.1547
+
+const BIOME_DEEP_WATER := 0
+const BIOME_WATER := 1
+const BIOME_BEACH := 2
+const BIOME_GRASS := 3
+const BIOME_DIRT := 4
+const BIOME_STONE := 5
 
 const BIOME_COLORS: Array = [
 	Color(0.18, 0.35, 0.65),
@@ -19,112 +25,74 @@ const BIOME_COLORS: Array = [
 
 var noise_freq: float = 0.008
 var noise_seed: int = 42
-var detail_freq: float = 0.032
+var detail_freq: float = 0.08
 var detail_seed: int = 1042
-var fractal_octaves: int = 5
+var fractal_octaves: int = 3
 var fractal_lacunarity: float = 2.0
-var fractal_gain: float = 0.5
+var fractal_gain: float = 0.3
 var detail_octaves: int = 3
 var detail_lacunarity: float = 2.0
-var detail_gain: float = 0.4
+var detail_gain: float = 0.3
+
+var _noise: FastNoiseLite
+var _detail_noise: FastNoiseLite
 
 
 func randomize_seeds() -> void:
 	noise_seed = randi()
 	detail_seed = randi()
-	noise_freq = randf_range(0.004, 0.015)
-	detail_freq = randf_range(0.02, 0.06)
+	noise_freq = randf_range(0.005, 0.015)
+	detail_freq = randf_range(0.05, 0.12)
+	if _noise:
+		_noise.seed = noise_seed
+		_noise.frequency = noise_freq
+	if _detail_noise:
+		_detail_noise.seed = detail_seed
+		_detail_noise.frequency = detail_freq
 
 var cells: Dictionary
 var _loaded_chunk_origins: Dictionary = {}
-var _rd: RenderingDevice
-var _shader_rid: RID
-var _pipeline: RID
-var _params_buf: RID
-var _origins_buf: RID
-var _output_buf: RID
-var _uniform_set: RID
 var _last_batch_generated: bool = false
 
 
 func _init(p_cells: Dictionary) -> void:
 	cells = p_cells
-	_rd = RenderingServer.create_local_rendering_device()
-	_init_compute()
+	_init_noise()
 
 
-func _init_compute() -> void:
-	var f = FileAccess.open("res://shaders/compute_noise.spv", FileAccess.READ)
-	if f == null:
-		push_error("ChunkManager: Cannot open compute_noise.spv")
-		return
-	var raw_bytes: PackedByteArray = f.get_buffer(f.get_length())
-	f.close()
-
-	var spirv = RDShaderSPIRV.new()
-	spirv.set_stage_bytecode(RenderingDevice.SHADER_STAGE_COMPUTE, raw_bytes)
-
-	_shader_rid = _rd.shader_create_from_spirv(spirv)
-	if not _shader_rid.is_valid():
-		push_error("ChunkManager: Failed to create shader RID from SPIR-V")
-		return
-	_pipeline = _rd.compute_pipeline_create(_shader_rid)
-	if not _pipeline.is_valid():
-		push_error("ChunkManager: Failed to create compute pipeline")
-		return
-
-	_params_buf = _rd.storage_buffer_create(64)
-	_origins_buf = _rd.storage_buffer_create(MAX_BATCH * 2 * 4)
-	_output_buf = _rd.storage_buffer_create(MAX_BATCH * CELLS_PER_CHUNK * VALUES_PER_CELL * 4)
-	_rebuild_uniform_set()
-
-
-func _rebuild_uniform_set() -> void:
-	var u_params := RDUniform.new()
-	u_params.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_params.binding = 0
-	u_params.add_id(_params_buf)
-	var u_origins := RDUniform.new()
-	u_origins.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_origins.binding = 1
-	u_origins.add_id(_origins_buf)
-	var u_output := RDUniform.new()
-	u_output.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_output.binding = 2
-	u_output.add_id(_output_buf)
-	_uniform_set = _rd.uniform_set_create([u_params, u_origins, u_output], _shader_rid, 0)
+func _init_noise() -> void:
+	_noise = FastNoiseLite.new()
+	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_noise.seed = noise_seed
+	_noise.frequency = noise_freq
+	_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_noise.fractal_octaves = fractal_octaves
+	_noise.fractal_lacunarity = fractal_lacunarity
+	_noise.fractal_gain = fractal_gain
+	_detail_noise = FastNoiseLite.new()
+	_detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_detail_noise.seed = detail_seed
+	_detail_noise.frequency = detail_freq
+	_detail_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_detail_noise.fractal_octaves = detail_octaves
+	_detail_noise.fractal_lacunarity = detail_lacunarity
+	_detail_noise.fractal_gain = detail_gain
+	print("ChunkManager: CPU FastNoiseLite initialized, freq=%.4f octaves=%d gain=%.2f" % [noise_freq, fractal_octaves, fractal_gain])
 
 
 func cleanup() -> void:
-	if _uniform_set.is_valid():
-		_rd.free_rid(_uniform_set)
-		_uniform_set = RID()
-	if _output_buf.is_valid():
-		_rd.free_rid(_output_buf)
-		_output_buf = RID()
-	if _origins_buf.is_valid():
-		_rd.free_rid(_origins_buf)
-		_origins_buf = RID()
-	if _params_buf.is_valid():
-		_rd.free_rid(_params_buf)
-		_params_buf = RID()
-	if _pipeline.is_valid():
-		_rd.free_rid(_pipeline)
-		_pipeline = RID()
-	if _shader_rid.is_valid():
-		_rd.free_rid(_shader_rid)
-		_shader_rid = RID()
+	pass
 
 
 func is_initialized() -> bool:
-	return _pipeline.is_valid() and _shader_rid.is_valid()
+	return _noise != null
 
 
 func generate_batch(batch: Array) -> void:
 	if batch.is_empty() or not is_initialized():
 		return
 	var bs := mini(batch.size(), MAX_BATCH)
-	_generate_batch_gpu(batch, bs)
+	_generate_batch_cpu(batch, bs)
 	_last_batch_generated = true
 
 
@@ -209,6 +177,7 @@ func load_map(path: String) -> Dictionary:
 		detail_octaves = n.get("detail_octaves", detail_octaves)
 		detail_lacunarity = n.get("detail_lacunarity", detail_lacunarity)
 		detail_gain = n.get("detail_gain", detail_gain)
+		_init_noise()
 	# Handle both old format (flat dict of cells) and new format (dict with "cells" key)
 	var cells_data: Dictionary
 	if root.has("cells"):
@@ -279,47 +248,7 @@ func load_map(path: String) -> Dictionary:
 	return result
 
 
-func _generate_batch_gpu(batch: Array, bs: int) -> void:
-	var params := PackedFloat32Array()
-	params.push_back(float(CHUNK_SIZE))
-	params.push_back(float(bs))
-	params.push_back(noise_freq)
-	params.push_back(float(noise_seed))
-	params.push_back(detail_freq)
-	params.push_back(float(detail_seed))
-	params.push_back(float(fractal_octaves))
-	params.push_back(fractal_lacunarity)
-	params.push_back(fractal_gain)
-	params.push_back(float(detail_octaves))
-	params.push_back(detail_lacunarity)
-	params.push_back(detail_gain)
-	params.push_back(0.0)
-	params.push_back(0.0)
-	params.push_back(0.0)
-	params.push_back(0.0)
-	_rd.buffer_update(_params_buf, 0, 64, params.to_byte_array())
-
-	var origins := PackedInt32Array()
-	for i in bs:
-		origins.push_back(batch[i].x)
-		origins.push_back(batch[i].y)
-	_rd.buffer_update(_origins_buf, 0, origins.size() * 4, origins.to_byte_array())
-
-	var output_count := bs * CELLS_PER_CHUNK * VALUES_PER_CELL
-	var output_size := output_count * 4
-
-	var cl := _rd.compute_list_begin()
-	_rd.compute_list_bind_compute_pipeline(cl, _pipeline)
-	_rd.compute_list_bind_uniform_set(cl, _uniform_set, 0)
-	_rd.compute_list_dispatch(cl, 1, 1, bs)
-	_rd.compute_list_end()
-
-	_rd.submit()
-	_rd.sync()
-
-	var output_bytes := _rd.buffer_get_data(_output_buf, 0, output_size)
-	var floats := output_bytes.to_float32_array()
-
+func _generate_batch_cpu(batch: Array, bs: int) -> void:
 	for ci in bs:
 		var ck: Vector2i = batch[ci]
 		if _loaded_chunk_origins.has(ck):
@@ -327,18 +256,71 @@ func _generate_batch_gpu(batch: Array, bs: int) -> void:
 		_loaded_chunk_origins[ck] = true
 		var base_q: int = ck.x * CHUNK_SIZE
 		var base_r: int = ck.y * CHUNK_SIZE
+		var min_elev := 999.0
+		var max_elev := -999.0
+		var biome_counts := {}
 		for cx in CHUNK_SIZE:
 			for cy in CHUNK_SIZE:
-				var idx: int = (ci * CELLS_PER_CHUNK + cx * CHUNK_SIZE + cy) * VALUES_PER_CELL
-				var elevation: float = floats[idx]
-				var biome: int = int(floats[idx + 1])
 				var q: int = base_q + cx
 				var r: int = base_r + cy
 				var hex := Vector3i(q, r, -q - r)
 				if cells.has(hex):
 					continue
+				var nval: float = _noise.get_noise_2d(float(q), float(r))
+				var biome: int = _classify_biome(nval)
+				var elevation: float = _remap_elevation(biome, nval)
 				var cell := HexCellData.new(hex, biome, elevation)
 				cell.color = BIOME_COLORS[clampi(biome, 0, BIOME_COLORS.size() - 1)]
-				for s in TOTAL_SUBS:
-					cell.sub_heights[s] = floats[idx + 2 + s]
+				cell.sub_heights[0] = elevation
+				const INNER_DIST: float = HEX_SIZE * 0.57735026919
+				const OUTER_DIST: float = HEX_SIZE
+				for i in 6:
+					var angle: float = deg_to_rad(30.0 + 60.0 * float(i))
+					var sub_q: float = float(q) + cos(angle) * INNER_DIST
+					var sub_r: float = float(r) + sin(angle) * INNER_DIST
+					var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
+					cell.sub_heights[i + 1] = elevation + detail
+				for i in 6:
+					var angle: float = deg_to_rad(60.0 * float(i))
+					var sub_q: float = float(q) + cos(angle) * OUTER_DIST
+					var sub_r: float = float(r) + sin(angle) * OUTER_DIST
+					var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
+					cell.sub_heights[i + 7] = elevation + detail
 				cells[hex] = cell
+				if elevation < min_elev: min_elev = elevation
+				if elevation > max_elev: max_elev = elevation
+				biome_counts[biome] = biome_counts.get(biome, 0) + 1
+		print("ChunkManager: batch elev=[%.3f, %.3f] biomes=%s freq=%.4f" % [min_elev, max_elev, biome_counts, noise_freq])
+
+
+func _classify_biome(nval: float) -> int:
+	if nval < -0.3:
+		return BIOME_DEEP_WATER
+	elif nval < -0.1:
+		return BIOME_WATER
+	elif nval < 0.1:
+		return BIOME_BEACH
+	elif nval < 0.4:
+		return BIOME_GRASS
+	elif nval < 0.7:
+		return BIOME_DIRT
+	else:
+		return BIOME_STONE
+
+
+func _remap_elevation(biome: int, nval: float) -> float:
+	match biome:
+		BIOME_DEEP_WATER:
+			return remap(nval, -1.0, -0.3, 0.1, 0.3)
+		BIOME_WATER:
+			return remap(nval, -0.3, -0.1, 0.15, 0.5)
+		BIOME_BEACH:
+			return remap(nval, -0.1, 0.1, 0.4, 0.7)
+		BIOME_GRASS:
+			return remap(nval, 0.1, 0.4, 0.7, 1.8)
+		BIOME_DIRT:
+			return remap(nval, 0.4, 0.7, 1.4, 2.8)
+		BIOME_STONE:
+			return remap(nval, 0.7, 1.4, 2.2, 4.0)
+		_:
+			return remap(nval, -1.0, 1.0, 0.3, 3.0)
