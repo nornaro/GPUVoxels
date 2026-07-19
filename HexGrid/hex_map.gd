@@ -2359,24 +2359,36 @@ func _create_hex_prism_mesh() -> ArrayMesh:
 	var top_center := Vector3(0.0, 1.0, 0.0)
 	for i in 6:
 		var next_i := (i + 1) % 6
+		st.set_color(Color.WHITE)
 		st.add_vertex(top_center)
+		st.set_color(Color.WHITE)
 		st.add_vertex(top_verts[i])
+		st.set_color(Color.WHITE)
 		st.add_vertex(top_verts[next_i])
 
 	var bot_center := Vector3(0.0, 0.0, 0.0)
 	for i in 6:
 		var next_i := (i + 1) % 6
+		st.set_color(Color(0.6, 0.6, 0.6))
 		st.add_vertex(bot_center)
+		st.set_color(Color(0.6, 0.6, 0.6))
 		st.add_vertex(bot_verts[next_i])
+		st.set_color(Color(0.6, 0.6, 0.6))
 		st.add_vertex(bot_verts[i])
 
 	for i in 6:
 		var next_i := (i + 1) % 6
+		st.set_color(Color(0.75, 0.75, 0.75))
 		st.add_vertex(bot_verts[i])
+		st.set_color(Color(0.75, 0.75, 0.75))
 		st.add_vertex(top_verts[i])
+		st.set_color(Color(0.75, 0.75, 0.75))
 		st.add_vertex(top_verts[next_i])
+		st.set_color(Color(0.75, 0.75, 0.75))
 		st.add_vertex(bot_verts[i])
+		st.set_color(Color(0.75, 0.75, 0.75))
 		st.add_vertex(top_verts[next_i])
+		st.set_color(Color(0.75, 0.75, 0.75))
 		st.add_vertex(bot_verts[next_i])
 
 	st.generate_normals()
