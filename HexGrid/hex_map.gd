@@ -232,6 +232,7 @@ func _setup_3d() -> void:
 	var hex_mat := StandardMaterial3D.new()
 	hex_mat.vertex_color_use_as_albedo = true
 	hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	hex_multimesh_instance.material_override = hex_mat
 	add_child(hex_multimesh_instance)
 
