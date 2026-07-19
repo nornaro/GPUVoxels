@@ -1443,30 +1443,19 @@ func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
 			continue
 		var h := float(hex.x) * 12.9898 + float(hex.y) * 78.233 + float(sub_idx) * 45.164
 		var density := _resource_noise(h)
-		var model_path := ""
+		var density2 := _resource_noise2(h)
+		var density3 := _resource_noise(h + 999.0)
 		var resource_type := ""
-		match cell.biome:
-			BIOME_GRASS:
-				if in_tree_cluster and density > 0.40:
-					resource_type = "tree"
-					model_path = RESOURCE_TREE_MODELS[int(h * 3.0) % RESOURCE_TREE_MODELS.size()]
-				elif not in_tree_cluster and density > 0.93:
-					resource_type = "tree"
-					model_path = RESOURCE_TREE_MODELS[int(h * 3.0) % RESOURCE_TREE_MODELS.size()]
-			BIOME_STONE:
-				if in_mountain_cluster and density > 0.35:
-					resource_type = "mountain"
-					model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
-				elif not in_mountain_cluster and density > 0.92:
-					resource_type = "mountain"
-					model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
-			BIOME_DIRT:
-				if in_rock_cluster and density > 0.45:
-					resource_type = "rock"
-					model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
-				elif not in_rock_cluster and density > 0.94:
-					resource_type = "rock"
-					model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+		var model_path := ""
+		if (cell.biome == BIOME_GRASS or cell.biome == BIOME_DIRT) and ((in_tree_cluster and density > 0.40) or (not in_tree_cluster and density > 0.93)):
+			resource_type = "tree"
+			model_path = RESOURCE_TREE_MODELS[int(h * 3.0) % RESOURCE_TREE_MODELS.size()]
+		elif (cell.biome == BIOME_STONE or cell.biome == BIOME_DIRT) and ((in_mountain_cluster and density2 > 0.35) or (not in_mountain_cluster and density2 > 0.92)):
+			resource_type = "mountain"
+			model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
+		elif (cell.biome == BIOME_DIRT or cell.biome == BIOME_GRASS or cell.biome == BIOME_STONE) and ((in_rock_cluster and density3 > 0.45) or (not in_rock_cluster and density3 > 0.94)):
+			resource_type = "rock"
+			model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
 		if not resource_type.is_empty():
 			resources.append({"sub_idx": sub_idx, "type": resource_type, "model": model_path})
 	return resources
@@ -1549,7 +1538,7 @@ func _rebuild_decorations() -> void:
 			var center := aabb.position + aabb.size * 0.5
 			var max_horiz := maxf(aabb.size.x, aabb.size.z)
 			var base_scl: float = SUB_HEX_SIZE * 0.925 / maxf(max_horiz, 0.01)
-			var width_scl: float = base_scl * lerpf(1.0, 1.5, h3)
+			var width_scl: float = base_scl * lerpf(1.0, 2.0, h3)
 			var height_scl: float = base_scl * lerpf(1.0, 2.0, h4)
 			var basis: Basis = Basis()
 			basis = basis.rotated(Vector3.UP, deg_to_rad(rot_step))

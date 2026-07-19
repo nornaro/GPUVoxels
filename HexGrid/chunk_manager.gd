@@ -43,6 +43,7 @@ func randomize_seeds() -> void:
 	detail_seed = randi()
 	noise_freq = randf_range(0.015, 0.06)
 	detail_freq = randf_range(0.05, 0.2)
+	_init_noise()
 
 var cells: Dictionary
 var _loaded_chunk_origins: Dictionary = {}
