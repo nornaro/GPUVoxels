@@ -159,6 +159,7 @@ var _cached_camera_pivot: Vector3 = Vector3(NAN, NAN, NAN)
 var resource_cache: Dictionary = {}
 var _decoration_multimeshes: Dictionary = {}
 var _decoration_mesh_cache: Dictionary = {}
+var _tree_materials: Dictionary = {}
 
 const RESOURCE_TREE_MODELS := [
 	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_A_large.tscn",
@@ -179,30 +180,6 @@ const RESOURCE_MOUNTAIN_COLOR := Color(0.6, 0.5, 0.5, 0.5)
 const RESOURCE_ROCK_COLOR := Color(0.5, 0.5, 0.4, 0.5)
 
 const SEASON_NAMES := ["Spring", "Summer", "Autumn", "Winter"]
-const SEASON_DECIDUOUS_TINTS := [
-	Color(0.55, 1.0, 0.45),   # Spring: bright green with slight yellow
-	Color(0.25, 0.85, 0.25),  # Summer: dark green
-	Color(1.0, 0.7, 0.2),     # Autumn: orange-yellow
-	Color(0.55, 0.38, 0.22),  # Winter: bare brown branches
-]
-const SEASON_DECIDUOUS_FLOWER_TINTS := [
-	Color(1.0, 0.85, 0.9),    # Spring: pink-white flowers
-	Color(1.0, 0.4, 0.3),     # Summer end: red-orange fruits
-	Color(0.9, 0.2, 0.15),    # Autumn end: red leaves
-	Color(0.6, 0.45, 0.3),    # Winter: dark brown
-]
-const SEASON_EVERGREEN_TINTS := [
-	Color(0.3, 0.85, 0.35),   # Spring: fresh green
-	Color(0.2, 0.7, 0.25),    # Summer: deep green
-	Color(0.35, 0.75, 0.3),   # Autumn: slightly muted
-	Color(0.5, 0.8, 0.5),     # Winter: snow-dusted green
-]
-const SEASON_EVERGREEN_SPOT_TINTS := [
-	Color(0.4, 0.95, 0.5),    # Spring: light spots
-	Color(0.3, 0.85, 0.35),   # Summer: light spots
-	Color(0.5, 0.8, 0.4),     # Autumn: spots
-	Color(0.85, 0.9, 0.88),   # Winter: white snow spots
-]
 var current_season: int = 1  # Summer default
 
 
@@ -960,7 +937,7 @@ func _handle_key(event: InputEventKey) -> void:
 			_tool_flash("Elevation: " + ELEVATION_STEP_NAMES[elevation_step_idx])
 		KEY_N:
 			current_season = (current_season + 1) % SEASON_NAMES.size()
-			_needs_decoration_rebuild = true
+			_update_tree_materials()
 			_tool_flash("Season: " + SEASON_NAMES[current_season])
 		KEY_F6:
 			_quick_save()
@@ -1523,7 +1500,16 @@ func _load_decoration_mesh(model_path: String) -> Mesh:
 	_free_scene_children(root)
 	if mesh:
 		if _is_tree_model(model_path):
-			mesh = _apply_tint_shader(mesh)
+			var albedo_tex: Texture2D = null
+			if mesh.get_surface_count() > 0:
+				var orig_mat: Material = mesh.surface_get_material(0)
+				if orig_mat is StandardMaterial3D:
+					albedo_tex = (orig_mat as StandardMaterial3D).albedo_texture
+				elif orig_mat is ShaderMaterial:
+					albedo_tex = (orig_mat as ShaderMaterial).get_shader_parameter("albedo_texture")
+			var tint_mat := _get_tree_material(model_path, albedo_tex)
+			if tint_mat:
+				mesh.surface_set_material(0, tint_mat)
 		_decoration_mesh_cache[model_path] = mesh
 	return mesh
 
@@ -1536,20 +1522,28 @@ func _is_evergreen(model_path: String) -> bool:
 	return model_path.contains("trees_B") or model_path.contains("tree_single_B")
 
 
-func _apply_tint_shader(mesh: Mesh) -> Mesh:
+func _get_tree_material(model_path: String, albedo_tex: Texture2D = null) -> ShaderMaterial:
+	var evergreen := _is_evergreen(model_path)
+	var key := "evergreen" if evergreen else "deciduous"
+	if _tree_materials.has(key):
+		return _tree_materials[key]
 	var shader := load("res://shaders/tree_tint.gdshader") as Shader
 	if not shader:
-		return mesh
-	var tint_mat := ShaderMaterial.new()
-	tint_mat.shader = shader
-	if mesh.get_surface_count() > 0:
-		var orig_mat: Material = mesh.surface_get_material(0)
-		if orig_mat is StandardMaterial3D:
-			var std: StandardMaterial3D = orig_mat as StandardMaterial3D
-			if std.albedo_texture:
-				tint_mat.set_shader_parameter("albedo_texture", std.albedo_texture)
-	mesh.surface_set_material(0, tint_mat)
-	return mesh
+		return null
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("is_evergreen", evergreen)
+	mat.set_shader_parameter("season", current_season)
+	if albedo_tex:
+		mat.set_shader_parameter("albedo_texture", albedo_tex)
+	_tree_materials[key] = mat
+	return mat
+
+
+func _update_tree_materials() -> void:
+	for key in _tree_materials:
+		var mat: ShaderMaterial = _tree_materials[key]
+		mat.set_shader_parameter("season", current_season)
 
 
 func _extract_mesh_from_node(node: Node) -> Mesh:
@@ -1582,7 +1576,7 @@ func _rebuild_decorations() -> void:
 			var model_path: String = res["model"]
 			var sub_idx: int = res["sub_idx"]
 			if not model_data.has(model_path):
-				model_data[model_path] = {"transforms": [], "colors": []}
+				model_data[model_path] = []
 			var local := _get_sub_hex_local_pos(hex, sub_idx)
 			var h1 := _resource_noise(float(hex.x) * 99.1 + float(hex.y) * 67.3 + float(sub_idx) * 23.7)
 			var h3 := _resource_noise(float(hex.x) * 31.7 + float(hex.y) * 59.3 + float(sub_idx) * 87.1)
@@ -1607,40 +1601,22 @@ func _rebuild_decorations() -> void:
 				height - height_scl * aabb.position.y,
 				hpos.z + local.y - rotated_center.z
 			)
-			model_data[model_path]["transforms"].append(Transform3D(basis, origin))
-			var inst_color := Color.WHITE
-			if _is_tree_model(model_path):
-				inst_color = _get_season_color(model_path, h4)
-			model_data[model_path]["colors"].append(inst_color)
+			model_data[model_path].append(Transform3D(basis, origin))
 	for model_path in model_data:
 		var mesh := _load_decoration_mesh(model_path)
 		if not mesh:
 			continue
-		var transforms: Array = model_data[model_path]["transforms"]
-		var colors: Array = model_data[model_path]["colors"]
+		var transforms: Array = model_data[model_path]
 		var mm := MultiMesh.new()
 		mm.mesh = mesh
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = true
 		mm.instance_count = transforms.size()
 		for i in transforms.size():
 			mm.set_instance_transform(i, transforms[i])
-			mm.set_instance_color(i, colors[i])
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
 		add_child(mi)
 		_decoration_multimeshes[model_path] = mi
-
-
-func _get_season_color(model_path: String, variation: float) -> Color:
-	if _is_evergreen(model_path):
-		var base: Color = SEASON_EVERGREEN_TINTS[current_season]
-		var spot: Color = SEASON_EVERGREEN_SPOT_TINTS[current_season]
-		return base.lerp(spot, 1.0 if variation > 0.6 else 0.0)
-	else:
-		var base: Color = SEASON_DECIDUOUS_TINTS[current_season]
-		var flower: Color = SEASON_DECIDUOUS_FLOWER_TINTS[current_season]
-		return base.lerp(flower, 1.0 if variation > 0.55 else 0.0)
 
 
 func _free_all_decorations() -> void:
