@@ -178,6 +178,33 @@ const RESOURCE_TREE_COLOR := Color(0.2, 0.7, 0.2, 0.5)
 const RESOURCE_MOUNTAIN_COLOR := Color(0.6, 0.5, 0.5, 0.5)
 const RESOURCE_ROCK_COLOR := Color(0.5, 0.5, 0.4, 0.5)
 
+const SEASON_NAMES := ["Spring", "Summer", "Autumn", "Winter"]
+const SEASON_DECIDUOUS_TINTS := [
+	Color(0.55, 1.0, 0.45),   # Spring: bright green with slight yellow
+	Color(0.25, 0.85, 0.25),  # Summer: dark green
+	Color(1.0, 0.7, 0.2),     # Autumn: orange-yellow
+	Color(0.55, 0.38, 0.22),  # Winter: bare brown branches
+]
+const SEASON_DECIDUOUS_FLOWER_TINTS := [
+	Color(1.0, 0.85, 0.9),    # Spring: pink-white flowers
+	Color(1.0, 0.4, 0.3),     # Summer end: red-orange fruits
+	Color(0.9, 0.2, 0.15),    # Autumn end: red leaves
+	Color(0.6, 0.45, 0.3),    # Winter: dark brown
+]
+const SEASON_EVERGREEN_TINTS := [
+	Color(0.3, 0.85, 0.35),   # Spring: fresh green
+	Color(0.2, 0.7, 0.25),    # Summer: deep green
+	Color(0.35, 0.75, 0.3),   # Autumn: slightly muted
+	Color(0.5, 0.8, 0.5),     # Winter: snow-dusted green
+]
+const SEASON_EVERGREEN_SPOT_TINTS := [
+	Color(0.4, 0.95, 0.5),    # Spring: light spots
+	Color(0.3, 0.85, 0.35),   # Summer: light spots
+	Color(0.5, 0.8, 0.4),     # Autumn: spots
+	Color(0.85, 0.9, 0.88),   # Winter: white snow spots
+]
+var current_season: int = 1  # Summer default
+
 
 func _ready() -> void:
 	chunk_manager = ChunkManager.new(cells)
@@ -543,7 +570,7 @@ func _update_ui() -> void:
 	if tool_mode == 3:
 		info_label.text = "Place: LMB | Cancel: RMB/Esc | Rotate: Z/X | Scale: KP+/KP- | Default: KP Enter | Rot: %.0f° | Scale: %.0f%%" % [_placement_rotation, _placement_scale * 100]
 	else:
-		info_label.text = "Orbit: MMB | Pan: WASD/RMB | Zoom: Scroll | Rot: Q/E | Grid: G | Overlay: H | ElevStep: F | Regen: R | QSave: F6 | QLoad: F7 | Save: F8 | Load: F9 | Esc: Cancel"
+		info_label.text = "Orbit: MMB | Pan: WASD/RMB | Zoom: Scroll | Rot: Q/E | Grid: G | Overlay: H | ElevStep: F | Season: N | Regen: R | QSave: F6 | QLoad: F7 | Save: F8 | Load: F9 | Esc: Cancel"
 
 
 # ============================================================================
@@ -931,6 +958,10 @@ func _handle_key(event: InputEventKey) -> void:
 			_needs_rebuild = true
 			_needs_decoration_rebuild = true
 			_tool_flash("Elevation: " + ELEVATION_STEP_NAMES[elevation_step_idx])
+		KEY_N:
+			current_season = (current_season + 1) % SEASON_NAMES.size()
+			_needs_decoration_rebuild = true
+			_tool_flash("Season: " + SEASON_NAMES[current_season])
 		KEY_F6:
 			_quick_save()
 		KEY_F7:
@@ -1491,7 +1522,33 @@ func _load_decoration_mesh(model_path: String) -> Mesh:
 	var mesh: Mesh = _extract_mesh_from_node(root)
 	_free_scene_children(root)
 	if mesh:
+		if _is_tree_model(model_path):
+			mesh = _apply_tint_shader(mesh)
 		_decoration_mesh_cache[model_path] = mesh
+	return mesh
+
+
+func _is_tree_model(model_path: String) -> bool:
+	return model_path.contains("tree")
+
+
+func _is_evergreen(model_path: String) -> bool:
+	return model_path.contains("trees_B") or model_path.contains("tree_single_B")
+
+
+func _apply_tint_shader(mesh: Mesh) -> Mesh:
+	var shader := load("res://shaders/tree_tint.gdshader") as Shader
+	if not shader:
+		return mesh
+	var tint_mat := ShaderMaterial.new()
+	tint_mat.shader = shader
+	if mesh.get_surface_count() > 0:
+		var orig_mat: Material = mesh.surface_get_material(0)
+		if orig_mat is StandardMaterial3D:
+			var std: StandardMaterial3D = orig_mat as StandardMaterial3D
+			if std.albedo_texture:
+				tint_mat.set_shader_parameter("albedo_texture", std.albedo_texture)
+	mesh.surface_set_material(0, tint_mat)
 	return mesh
 
 
@@ -1514,7 +1571,7 @@ func _free_scene_children(node: Node) -> void:
 func _rebuild_decorations() -> void:
 	_free_all_decorations()
 	_ensure_draw_cache()
-	var model_instances: Dictionary = {}
+	var model_data: Dictionary = {}
 	for hex in _cached_visible_hexes:
 		if not resource_cache.has(hex) or not _cell_exists(hex):
 			continue
@@ -1524,8 +1581,8 @@ func _rebuild_decorations() -> void:
 		for res in resource_cache[hex]:
 			var model_path: String = res["model"]
 			var sub_idx: int = res["sub_idx"]
-			if not model_instances.has(model_path):
-				model_instances[model_path] = []
+			if not model_data.has(model_path):
+				model_data[model_path] = {"transforms": [], "colors": []}
 			var local := _get_sub_hex_local_pos(hex, sub_idx)
 			var h1 := _resource_noise(float(hex.x) * 99.1 + float(hex.y) * 67.3 + float(sub_idx) * 23.7)
 			var h3 := _resource_noise(float(hex.x) * 31.7 + float(hex.y) * 59.3 + float(sub_idx) * 87.1)
@@ -1550,22 +1607,40 @@ func _rebuild_decorations() -> void:
 				height - height_scl * aabb.position.y,
 				hpos.z + local.y - rotated_center.z
 			)
-			model_instances[model_path].append(Transform3D(basis, origin))
-	for model_path in model_instances:
+			model_data[model_path]["transforms"].append(Transform3D(basis, origin))
+			var inst_color := Color.WHITE
+			if _is_tree_model(model_path):
+				inst_color = _get_season_color(model_path, h4)
+			model_data[model_path]["colors"].append(inst_color)
+	for model_path in model_data:
 		var mesh := _load_decoration_mesh(model_path)
 		if not mesh:
 			continue
-		var transforms: Array = model_instances[model_path]
+		var transforms: Array = model_data[model_path]["transforms"]
+		var colors: Array = model_data[model_path]["colors"]
 		var mm := MultiMesh.new()
 		mm.mesh = mesh
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
 		mm.instance_count = transforms.size()
 		for i in transforms.size():
 			mm.set_instance_transform(i, transforms[i])
+			mm.set_instance_color(i, colors[i])
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
 		add_child(mi)
 		_decoration_multimeshes[model_path] = mi
+
+
+func _get_season_color(model_path: String, variation: float) -> Color:
+	if _is_evergreen(model_path):
+		var base: Color = SEASON_EVERGREEN_TINTS[current_season]
+		var spot: Color = SEASON_EVERGREEN_SPOT_TINTS[current_season]
+		return base.lerp(spot, 1.0 if variation > 0.6 else 0.0)
+	else:
+		var base: Color = SEASON_DECIDUOUS_TINTS[current_season]
+		var flower: Color = SEASON_DECIDUOUS_FLOWER_TINTS[current_season]
+		return base.lerp(flower, 1.0 if variation > 0.55 else 0.0)
 
 
 func _free_all_decorations() -> void:
@@ -2381,8 +2456,9 @@ func _rebuild_hex_multimesh() -> void:
 func _rebuild_overlay_mesh() -> void:
 	var imm := ImmediateMesh.new()
 	imm.clear_surfaces()
-	imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var has_content := false
 
+	# Rivers
 	for hex in _cached_visible_rivers:
 		if not river_cells.has(hex) or not _cell_exists(hex):
 			continue
@@ -2392,8 +2468,12 @@ func _rebuild_overlay_mesh() -> void:
 		for sub_idx in river_cells[hex]:
 			var local := _get_sub_hex_local_pos(hex, sub_idx)
 			var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+			if not has_content:
+				imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+				has_content = true
 			_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, Color(0.2, 0.45, 0.75, 0.75))
 
+	# Vertex rivers
 	for key in _cached_visible_vertex_rivers:
 		var vdata: Dictionary = _get_vertex_data(key)
 		if not vdata.has("hex") or not vdata.has("vi"):
@@ -2407,15 +2487,23 @@ func _rebuild_overlay_mesh() -> void:
 		var height := _get_cell_height(cell) + 0.05
 		var local := _get_sub_hex_local_pos(hex, VERTEX_OFFSET + vi)
 		var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+		if not has_content:
+			imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+			has_content = true
 		_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, Color(0.2, 0.45, 0.75, 0.75))
 
+	# Roads
 	for road in roads:
 		var from_hex: Vector3i = road["from"]
 		var to_hex: Vector3i = road["to"]
 		if not _cell_exists(from_hex) or not _cell_exists(to_hex):
 			continue
+		if not has_content:
+			imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+			has_content = true
 		_add_road_overlay_tris(imm, from_hex, to_hex, Color(0.6, 0.35, 0.15, 0.9))
 
+	# Sub-hex overlay
 	if show_overlay:
 		for hex in _cached_visible_hexes:
 			if not _cell_exists(hex):
@@ -2426,11 +2514,19 @@ func _rebuild_overlay_mesh() -> void:
 			for i in TOTAL_SUBS:
 				var local := _get_sub_hex_local_pos(hex, i)
 				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+				if not has_content:
+					imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+					has_content = true
 				_add_flat_hex_wireframe(imm, center, SUB_HEX_SIZE, Color(1, 1, 1, 0.25))
 
+	# River tool debug
 	if tool_mode == 1:
+		if not has_content:
+			imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+			has_content = true
 		_add_river_debug_overlay_tris(imm)
 
+	# Resource heatmap
 	if show_resources:
 		for hex in _cached_visible_hexes:
 			if not resource_cache.has(hex) or not _cell_exists(hex):
@@ -2441,10 +2537,16 @@ func _rebuild_overlay_mesh() -> void:
 			for res in resource_cache[hex]:
 				var local := _get_sub_hex_local_pos(hex, res["sub_idx"])
 				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+				if not has_content:
+					imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+					has_content = true
 				_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, _get_resource_color(res["type"]))
 
-	imm.surface_end()
-	overlay_mesh_instance.mesh = imm
+	if has_content:
+		imm.surface_end()
+		overlay_mesh_instance.mesh = imm
+	else:
+		overlay_mesh_instance.mesh = null
 
 
 func _add_flat_hex_tris(imm: ImmediateMesh, center: Vector3, size: float, col: Color) -> void:
