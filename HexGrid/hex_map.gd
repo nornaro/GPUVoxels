@@ -1539,11 +1539,9 @@ func _rebuild_decorations() -> void:
 				model_instances[model_path] = []
 			var local := _get_sub_hex_local_pos(hex, sub_idx)
 			var h1 := _resource_noise(float(hex.x) * 99.1 + float(hex.y) * 67.3 + float(sub_idx) * 23.7)
-			var h2 := _resource_noise2(float(hex.x) * 47.3 + float(hex.y) * 83.1 + float(sub_idx) * 12.9)
 			var h3 := _resource_noise(float(hex.x) * 31.7 + float(hex.y) * 59.3 + float(sub_idx) * 87.1)
 			var h4 := _resource_noise2(float(hex.x) * 11.3 + float(hex.y) * 93.7 + float(sub_idx) * 51.5)
 			var rot_step := 60.0 if h1 > 0.5 else -60.0
-			var mirror_x := h2 > 0.5
 			var mesh := _load_decoration_mesh(model_path)
 			if not mesh:
 				continue
@@ -1553,10 +1551,9 @@ func _rebuild_decorations() -> void:
 			var base_scl: float = SUB_HEX_SIZE * 0.925 / maxf(max_horiz, 0.01)
 			var width_scl: float = base_scl * lerpf(1.0, 1.5, h3)
 			var height_scl: float = base_scl * lerpf(1.0, 2.0, h4)
-			var sx: float = -width_scl if mirror_x else width_scl
 			var basis: Basis = Basis()
 			basis = basis.rotated(Vector3.UP, deg_to_rad(rot_step))
-			basis = basis.scaled(Vector3(sx, height_scl, width_scl))
+			basis = basis.scaled(Vector3(width_scl, height_scl, width_scl))
 			var center_xz := Vector3(center.x, 0.0, center.z)
 			var rotated_center := basis * center_xz
 			var origin := Vector3(
