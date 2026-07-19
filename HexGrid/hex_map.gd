@@ -41,8 +41,8 @@ var BIOME_COLORS: Array[Color] = [
 const WATER_LEVEL: float = -0.3
 const LAKE_LEVEL: float = -0.2
 
-const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.05, 0.01, 0.0]
-const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Step 0.05", "Step 0.01", "Flat"]
+const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.01, 0.0]
+const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Step 0.01", "Flat"]
 var elevation_step_idx: int = 0
 
 var cells: Dictionary = {}
@@ -52,7 +52,7 @@ var river_cells: Dictionary = {}
 var road_cells: Dictionary = {}
 var vertex_subs: Dictionary = {}
 
-## Toggle sub-hex overlay (H key). Shows the13 sub-hex grid on each hex for river/road painting.
+## Toggle sub-hex overlay (H key). Shows the 13 sub-hex grid on each hex for river/road painting.
 @export var show_overlay: bool = false
 
 ## Toggle grid lines (G key). Shows a wireframe grid on the terrain.
@@ -64,14 +64,14 @@ var vertex_subs: Dictionary = {}
 ## Toggle elevation shading (Insert key). Colors hexes by elevation value.
 @export var show_elevation_shade: bool = false
 
-## Current tool: 0=Navigate, 1=River, 2=Road, 3=Block. Change with keys 1/2/3/9 or Escape to deselect.
-@export_range(0, 3) var tool_mode: int = 0:
+## Current tool: 0=Navigate, 1=River, 2=Road, 3=Place, 4=Raise, 5=Flatten, 6=Level, 7=WaterFlow. Keys 1-8.
+@export_range(0, 7) var tool_mode: int = 0:
 	set(v):
 		tool_mode = v
 		if is_inside_tree():
 			_update_ui()
 
-## Elevation step precision (F key). 1.0=integer, 0.1=tenth, 0.0=flat.
+## Elevation step precision (F key). 1.0=integer, 0.1=tenth, 0.0=flat/raw.
 @export var elevation_step: float = 1.0:
 	set(v):
 		elevation_step = v
@@ -79,13 +79,25 @@ var vertex_subs: Dictionary = {}
 			elevation_step_idx = ELEVATION_STEPS.find(v)
 
 var roads: Array[Dictionary] = []
-const TOOL_NAMES := ["Navigate", "River", "Road", "Block"]
+const TOOL_NAMES := ["Navigate", "River", "Road", "Place", "Raise", "Flatten", "Level", "WaterFlow"]
 
 var painting: bool = false
 var erasing: bool = false
 
 var road_start: Vector3i = Vector3i(999999, 999999, -1999998)
 var placed_blocks: Dictionary = {}
+var placed_objects: Dictionary = {}
+var _placed_object_instances: Dictionary = {}
+var _objects_container: Node3D
+var selected_model_path: String = ""
+var _placement_rotation: float = 0.0
+var _placement_scale: float = 1.0
+var _default_scale: float = 1.0
+var _ghost_instance: Node3D = null
+var _ghost_model_path: String = ""
+var _level_target: Vector3i = Vector3i(999999, 999999, -1999998)
+var _flatten_target: float = 0.0
+var _flatten_captured: bool = false
 
 var info_label: Label
 var tool_label: Label
@@ -106,6 +118,7 @@ var _pending_rivers: Array[Vector2i] = []
 const MAX_TERRAIN_PER_FRAME: int = 32
 const MAX_RIVERS_PER_FRAME: int = 8
 const MAX_NEW_CHUNKS_QUEUED_PER_FRAME: int = 64
+@export var max_chunk_radius: int = 50
 
 var _cached_visible_hexes: Array[Vector3i] = []
 var _cached_visible_set: Dictionary = {}
@@ -133,12 +146,37 @@ var _hex_grass_mesh: ArrayMesh = preload("res://assets/kaykit_medieval_hexagon_p
 var _blocks_container: Node3D
 var _block_instances: Dictionary = {}
 var _needs_rebuild: bool = true
+var _needs_decoration_rebuild: bool = false
 var _needs_overlay_rebuild: bool = true
 
 var _cached_camera_yaw: float = NAN
 var _cached_camera_pitch: float = NAN
 var _cached_camera_distance: float = NAN
 var _cached_camera_pivot: Vector3 = Vector3(NAN, NAN, NAN)
+
+## Resource heatmap
+@export var show_resources: bool = false
+var resource_cache: Dictionary = {}
+var _decoration_multimeshes: Dictionary = {}
+var _decoration_mesh_cache: Dictionary = {}
+
+const RESOURCE_TREE_MODELS := [
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_A_large.tscn",
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/trees_B_large.tscn",
+]
+const RESOURCE_MOUNTAIN_MODELS := [
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_A.tscn",
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_B.tscn",
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/mountain_C.tscn",
+]
+const RESOURCE_ROCK_MODELS := [
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_A.tscn",
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_B.tscn",
+	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_C.tscn",
+]
+const RESOURCE_TREE_COLOR := Color(0.2, 0.7, 0.2, 0.5)
+const RESOURCE_MOUNTAIN_COLOR := Color(0.6, 0.5, 0.5, 0.5)
+const RESOURCE_ROCK_COLOR := Color(0.5, 0.5, 0.4, 0.5)
 
 
 func _ready() -> void:
@@ -211,6 +249,9 @@ func _setup_3d() -> void:
 	_blocks_container = Node3D.new()
 	add_child(_blocks_container)
 
+	_objects_container = Node3D.new()
+	add_child(_objects_container)
+
 	_hex_prism_mesh = _create_hex_prism_mesh()
 
 
@@ -248,12 +289,261 @@ func _setup_ui() -> void:
 	tool_label.add_theme_constant_override("shadow_offset_y", 1)
 	canvas.add_child(tool_label)
 
+	_setup_top_toolbar(canvas)
+	_setup_bottom_palette(canvas)
 	_update_ui()
 
 
+var _top_toolbar: HBoxContainer
+var _bottom_palette: PanelContainer
+var _palette_tabs: TabContainer
+var _palette_grids: Dictionary = {}
+var _tool_buttons: Array[Button] = []
+
+
+func _setup_top_toolbar(canvas: CanvasLayer) -> void:
+	var screen_size := get_viewport().get_visible_rect().size
+	var panel := PanelContainer.new()
+	panel.position = Vector2(200, 0)
+	panel.size = Vector2(screen_size.x - 210, 32)
+	var toolbar_style := StyleBoxFlat.new()
+	toolbar_style.bg_color = Color(0.15, 0.15, 0.15, 0.8)
+	toolbar_style.corner_radius_bottom_left = 4
+	toolbar_style.corner_radius_bottom_right = 4
+	panel.add_theme_stylebox_override("panel", toolbar_style)
+	canvas.add_child(panel)
+
+	_top_toolbar = HBoxContainer.new()
+	_top_toolbar.add_theme_constant_override("separation", 4)
+	panel.add_child(_top_toolbar)
+
+	var tool_defs := [
+		["Nav", 0, "1"],
+		["River", 1, "2"],
+		["Road", 2, "3"],
+		["Place", 3, "4"],
+		["Raise", 4, "5"],
+		["Flatten", 5, "6"],
+		["Level", 6, "7"],
+	]
+	for td in tool_defs:
+		var btn := Button.new()
+		btn.text = "%s [%s]" % [td[0], td[2]]
+		btn.toggle_mode = true
+		btn.pressed.connect(_on_tool_button.bind(td[1]))
+		btn.custom_minimum_size = Vector2(80, 26)
+		_top_toolbar.add_child(btn)
+		_tool_buttons.append(btn)
+
+
+func _on_tool_button(mode: int) -> void:
+	_set_tool(mode)
+
+
+func _update_tool_buttons() -> void:
+	for i in _tool_buttons.size():
+		_tool_buttons[i].button_pressed = (i == tool_mode)
+
+
+func _setup_bottom_palette(canvas: CanvasLayer) -> void:
+	var screen_size := get_viewport().get_visible_rect().size
+
+	var panel := PanelContainer.new()
+	panel.position = Vector2(4, screen_size.y - 134)
+	panel.size = Vector2(screen_size.x - 8, 130)
+	canvas.add_child(panel)
+	_bottom_palette = panel
+
+	_palette_tabs = TabContainer.new()
+	_palette_tabs.size = Vector2(screen_size.x - 8, 130)
+	_palette_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_palette_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var tab_style := StyleBoxFlat.new()
+	tab_style.bg_color = Color(0.15, 0.15, 0.15, 0.85)
+	tab_style.corner_radius_top_left = 4
+	tab_style.corner_radius_top_right = 4
+	tab_style.content_margin_left = 4
+	tab_style.content_margin_right = 4
+	tab_style.content_margin_top = 2
+	tab_style.content_margin_bottom = 2
+	_palette_tabs.add_theme_stylebox_override("panel", tab_style)
+	_palette_tabs.add_theme_stylebox_override("tab_selected", tab_style)
+	var tab_unsel := tab_style.duplicate()
+	tab_unsel.bg_color = Color(0.25, 0.25, 0.25, 0.7)
+	_palette_tabs.add_theme_stylebox_override("tab_unselected", tab_unsel)
+	_palette_tabs.add_theme_font_size_override("font_size", 12)
+	panel.add_child(_palette_tabs)
+
+	_add_palette_tab("neutral", "res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/")
+	_add_palette_tab("nature", "res://assets/kaykit_medieval_hexagon_pack/decoration/nature/")
+	_add_palette_tab("props", "res://assets/kaykit_medieval_hexagon_pack/decoration/props/")
+
+
+func _add_palette_tab(tab_name: String, dir_path: String) -> void:
+	var scroll := ScrollContainer.new()
+	scroll.name = tab_name
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_palette_tabs.add_child(scroll)
+
+	var grid := HBoxContainer.new()
+	grid.add_theme_constant_override("separation", 2)
+	scroll.add_child(grid)
+	_palette_grids[tab_name] = grid
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "X"
+	cancel_btn.custom_minimum_size = Vector2(12, 12)
+	cancel_btn.tooltip_text = "Cancel placement"
+	var cancel_style := StyleBoxFlat.new()
+	cancel_style.bg_color = Color(0.5, 0.15, 0.15, 0.7)
+	cancel_style.corner_radius_top_left = 3
+	cancel_style.corner_radius_top_right = 3
+	cancel_style.corner_radius_bottom_left = 3
+	cancel_style.corner_radius_bottom_right = 3
+	cancel_btn.add_theme_stylebox_override("normal", cancel_style)
+	var cancel_hover := cancel_style.duplicate()
+	cancel_hover.bg_color = Color(0.7, 0.2, 0.2, 0.9)
+	cancel_btn.add_theme_stylebox_override("hover", cancel_hover)
+	cancel_btn.pressed.connect(_cancel_placement)
+	grid.add_child(cancel_btn)
+
+	var dir := DirAccess.open(dir_path)
+	if not dir:
+		return
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	var items: Array[String] = []
+	while fname != "":
+		if fname.ends_with(".tscn") and not fname.begins_with("."):
+			items.append(fname)
+		fname = dir.get_next()
+	dir.list_dir_end()
+	items.sort()
+
+	for tscn_name in items:
+		var base_name := tscn_name.get_basename()
+		var icon_path := dir_path + base_name + ".webp"
+		var scene_path := dir_path + tscn_name
+
+		var btn := TextureButton.new()
+		btn.custom_minimum_size = Vector2(72, 72)
+		btn.size = Vector2(72, 72)
+		btn.ignore_texture_size = true
+		btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		var btn_style := StyleBoxFlat.new()
+		btn_style.bg_color = Color(0.2, 0.2, 0.2, 0.6)
+		btn_style.corner_radius_top_left = 2
+		btn_style.corner_radius_top_right = 2
+		btn_style.corner_radius_bottom_left = 2
+		btn_style.corner_radius_bottom_right = 2
+		btn_style.content_margin_left = 1
+		btn_style.content_margin_right = 1
+		btn_style.content_margin_top = 1
+		btn_style.content_margin_bottom = 1
+		btn.add_theme_stylebox_override("normal", btn_style)
+		var btn_hover := btn_style.duplicate()
+		btn_hover.bg_color = Color(0.35, 0.35, 0.4, 0.8)
+		btn.add_theme_stylebox_override("hover", btn_hover)
+		var btn_pressed := btn_style.duplicate()
+		btn_pressed.bg_color = Color(0.2, 0.4, 0.6, 0.9)
+		btn.add_theme_stylebox_override("pressed", btn_pressed)
+
+		if ResourceLoader.exists(icon_path):
+			var tex := load(icon_path) as Texture2D
+			if tex:
+				btn.texture_normal = tex
+
+		btn.pressed.connect(_on_palette_item_selected.bind(scene_path))
+		btn.tooltip_text = base_name
+		grid.add_child(btn)
+
+
+func _on_palette_item_selected(path: String) -> void:
+	selected_model_path = path
+	_placement_scale = _default_scale
+	_placement_rotation = 0.0
+	tool_mode = 3
+	_update_tool_buttons()
+	_create_ghost(path)
+	_tool_flash("Select: " + path.get_file().get_basename())
+
+
+func _create_ghost(model_path: String) -> void:
+	_remove_ghost()
+	if not ResourceLoader.exists(model_path):
+		return
+	var scene: PackedScene = load(model_path)
+	if not scene:
+		return
+	_ghost_instance = scene.instantiate()
+	_objects_container.add_child(_ghost_instance)
+	_ghost_model_path = model_path
+	_set_node_transparency(_ghost_instance, 0.5)
+
+
+func _set_node_transparency(node: Node, alpha: float) -> void:
+	for child in node.get_children():
+		if child is MeshInstance3D:
+			var mi: MeshInstance3D = child
+			for i in mi.get_surface_override_material_count():
+				var mat = mi.get_surface_override_material(i)
+				if mat == null and mi.mesh != null:
+					mat = mi.mesh.surface_get_material(i)
+				if mat is StandardMaterial3D:
+					var new_mat: StandardMaterial3D = mat.duplicate() as StandardMaterial3D
+					new_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					var col := new_mat.albedo_color
+					col.a = alpha
+					new_mat.albedo_color = col
+					mi.set_surface_override_material(i, new_mat)
+		_set_node_transparency(child, alpha)
+
+
+func _update_ghost_position() -> void:
+	if _ghost_instance == null:
+		return
+	var world_pos := _screen_to_world_3d(get_viewport().get_mouse_position())
+	if world_pos.x == INF:
+		_ghost_instance.visible = false
+		return
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	if not _cell_exists(hex):
+		_ghost_instance.visible = false
+		return
+	_ghost_instance.visible = true
+	var cell: HexCellData = cells[hex]
+	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var height := _get_cell_height(cell)
+	_ghost_instance.position = Vector3(hpos.x, height, hpos.z)
+	_ghost_instance.rotation_degrees.y = _placement_rotation
+	_ghost_instance.scale = Vector3(_placement_scale, _placement_scale, _placement_scale)
+
+
+func _remove_ghost() -> void:
+	if _ghost_instance and is_instance_valid(_ghost_instance):
+		_ghost_instance.queue_free()
+	_ghost_instance = null
+	_ghost_model_path = ""
+
+
+func _cancel_placement() -> void:
+	_remove_ghost()
+	selected_model_path = ""
+	_placement_rotation = 0.0
+	_placement_scale = _default_scale
+	_set_tool(0)
+
+
 func _update_ui() -> void:
-	tool_label.text = "Tool: %s [1/2/3]" % TOOL_NAMES[tool_mode]
-	info_label.text = "Orbit: MMB | Pan: WASD/RMB | Zoom: Scroll | Rot: Q/E | Grid: G | Overlay: H | ElevStep: F | Block: 9 | Regen: R | QSave: F6 | QLoad: F7 | Save: F8 | Load: F9 | Esc: Cancel"
+	var tool_name: String = TOOL_NAMES[tool_mode] if tool_mode < TOOL_NAMES.size() else "?"
+	tool_label.text = "Tool: %s" % tool_name
+	if tool_mode == 3:
+		info_label.text = "Place: LMB | Cancel: RMB/Esc | Rotate: Z/X | Scale: KP+/KP- | Default: KP Enter | Rot: %.0f° | Scale: %.0f%%" % [_placement_rotation, _placement_scale * 100]
+	else:
+		info_label.text = "Orbit: MMB | Pan: WASD/RMB | Zoom: Scroll | Rot: Q/E | Grid: G | Overlay: H | ElevStep: F | Regen: R | QSave: F6 | QLoad: F7 | Save: F8 | Load: F9 | Esc: Cancel"
 
 
 # ============================================================================
@@ -282,11 +572,16 @@ func _process(delta: float) -> void:
 		_rebuild_overlay_mesh()
 		_rebuild_grid_lines()
 		_update_block_instances()
+		_update_object_instances()
 		_needs_rebuild = false
 		_needs_overlay_rebuild = false
 	elif _needs_overlay_rebuild:
 		_rebuild_overlay_mesh()
 		_needs_overlay_rebuild = false
+
+	if _needs_decoration_rebuild:
+		_rebuild_decorations()
+		_needs_decoration_rebuild = false
 
 	if tool_mode == 1:
 		var hover := _get_mouse_hex()
@@ -294,8 +589,13 @@ func _process(delta: float) -> void:
 			_last_debug_hover_hex = hover
 			_needs_overlay_rebuild = true
 
+	if tool_mode == 3:
+		_update_ghost_position()
+
 
 func _update_hover_info() -> void:
+	if tool_mode == 3:
+		return
 	var hex := _get_mouse_hex()
 	if hex == _last_hover_hex:
 		return
@@ -318,13 +618,26 @@ func _update_hover_info() -> void:
 		var sub_type := "Sub"
 		if best_sub >= VERTEX_OFFSET:
 			sub_type = "Vertex"
-		var sub_h: float = cell.sub_heights[best_sub]
 		var display_h: float = _get_cell_height(cell)
 		var labels := ""
 		if _is_hex_river(hex):
 			labels += "  |  RIVER(%d)" % _hex_river_count(hex)
 		if _is_hex_road(hex):
 			labels += "  |  ROAD(%d)" % _hex_road_count(hex)
+		if placed_objects.has(hex):
+			var obj_data: Variant = placed_objects[hex]
+			if obj_data is Dictionary:
+				labels += "  |  OBJ rot:%.0f° scale:%.0f%%" % [obj_data.get("rotation", 0.0), obj_data.get("scale", 1.0) * 100]
+			elif obj_data is String:
+				labels += "  |  OBJ"
+		if show_resources:
+			var counts := _get_resource_counts(hex)
+			if not counts.is_empty():
+				var parts: PackedStringArray = []
+				for rtype in counts:
+					var display_name: String = rtype.capitalize()
+					parts.append("%dx %s" % [counts[rtype], display_name])
+				labels += "  |  Resources: " + ", ".join(parts)
 		info_label.text = "Hex: (%d,%d,%d)  |  %s  |  %s %d  |  Elev: %.2f  |  Height: %.1f  |  Water nb: %d%s  |  Q:%d R:%d" % [
 			hex.x, hex.y, hex.z, biome_name, sub_type, best_sub, cell.elevation, display_h, wn, labels,
 			_pending_chunks.size(), _pending_rivers.size()
@@ -338,6 +651,8 @@ func _discover_visible_chunks() -> void:
 	for cq in range(_cached_chunk_min.x, _cached_chunk_max.x + 1):
 		for cr in range(_cached_chunk_min.y, _cached_chunk_max.y + 1):
 			var ck := Vector2i(cq, cr)
+			if cq * cq + cr * cr > max_chunk_radius * max_chunk_radius:
+				continue
 			if not chunk_manager._loaded_chunk_origins.has(ck):
 				if not _pending_chunks.has(ck) and _pending_chunks.size() < MAX_NEW_CHUNKS_QUEUED_PER_FRAME:
 					_pending_chunks.append(ck)
@@ -351,10 +666,12 @@ func _process_pending_batch() -> void:
 	_pending_chunks = _pending_chunks.slice(count)
 	chunk_manager.generate_batch(batch)
 	for ck in batch:
+		_compute_chunk_resources(ck)
 		if _chunk_has_cells(ck) and not chunks_with_rivers.has(ck):
 			_pending_rivers.append(ck)
 	if _pending_chunks.is_empty():
 		_needs_save = true
+		_needs_decoration_rebuild = true
 
 
 func _process_pending_rivers() -> void:
@@ -471,7 +788,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			_paint_river_at(event.position, true)
 		elif not event.pressed:
 			erasing = false
-		if tool_mode == 0 or tool_mode == 2:
+		if tool_mode == 3 and event.pressed:
+			_cancel_placement()
+			return
+		if tool_mode in [0, 2, 4, 5, 6, 7]:
 			panning = event.pressed
 			if event.pressed:
 				pan_start = event.position
@@ -490,7 +810,19 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			2:
 				_place_road_at(event.position)
 			3:
-				_place_block_at(event.position)
+				_place_object_at(event.position)
+			4:
+				painting = true
+				_raise_at(event.position)
+			5:
+				painting = true
+				_flatten_at(event.position)
+			6:
+				painting = true
+				_level_at(event.position)
+			7:
+				painting = true
+				_water_flow_at(event.position)
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
@@ -524,38 +856,48 @@ func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	elif erasing and tool_mode == 1:
 		_paint_river_at(event.position, true)
 		return
+	elif painting and tool_mode == 4:
+		_raise_at(event.position)
+		return
+	elif painting and tool_mode == 5:
+		_flatten_at(event.position)
+		return
+	elif painting and tool_mode == 6:
+		_level_at(event.position)
+		return
+	elif painting and tool_mode == 7:
+		_water_flow_at(event.position)
+		return
 
 
 func _handle_key(event: InputEventKey) -> void:
 	if not event.pressed:
 		return
 	match event.keycode:
-		KEY_1:
-			tool_mode = 0
-			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_needs_overlay_rebuild = true
-			_update_ui()
-		KEY_2:
-			tool_mode = 1
-			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_needs_overlay_rebuild = true
-			_update_ui()
-		KEY_3:
-			tool_mode = 2
-			road_start = Vector3i(999999, 999999, -1999998)
-			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_needs_overlay_rebuild = true
-			_update_ui()
-		KEY_9:
-			tool_mode = 3
-			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
-			_needs_overlay_rebuild = true
-			_update_ui()
+		KEY_1, KEY_KP_1:
+			_set_tool(0)
+		KEY_2, KEY_KP_2:
+			_set_tool(1)
+		KEY_3, KEY_KP_3:
+			_set_tool(2)
+		KEY_4, KEY_KP_4:
+			_set_tool(3)
+		KEY_5, KEY_KP_5:
+			_set_tool(4)
+		KEY_6, KEY_KP_6:
+			_set_tool(5)
+		KEY_7, KEY_KP_7:
+			_set_tool(6)
+		KEY_8, KEY_KP_8:
+			_set_tool(7)
 		KEY_H:
 			show_overlay = not show_overlay
 			_needs_overlay_rebuild = true
 		KEY_G:
 			show_grid = not show_grid
+			_needs_overlay_rebuild = true
+		KEY_J:
+			show_resources = not show_resources
 			_needs_overlay_rebuild = true
 		KEY_V:
 			show_height = not show_height
@@ -564,13 +906,15 @@ func _handle_key(event: InputEventKey) -> void:
 			show_elevation_shade = not show_elevation_shade
 			_needs_rebuild = true
 		KEY_ESCAPE:
-			tool_mode = 0
+			if tool_mode == 3:
+				_cancel_placement()
+			else:
+				_set_tool(0)
 			road_start = Vector3i(999999, 999999, -1999998)
 			painting = false
 			erasing = false
 			_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
 			_needs_overlay_rebuild = true
-			_update_ui()
 		KEY_Q:
 			camera_yaw -= 15.0
 			_update_camera_transform()
@@ -585,6 +929,7 @@ func _handle_key(event: InputEventKey) -> void:
 			elevation_step_idx = (elevation_step_idx + 1) % ELEVATION_STEPS.size()
 			elevation_step = ELEVATION_STEPS[elevation_step_idx]
 			_needs_rebuild = true
+			_needs_decoration_rebuild = true
 			_tool_flash("Elevation: " + ELEVATION_STEP_NAMES[elevation_step_idx])
 		KEY_F6:
 			_quick_save()
@@ -594,9 +939,44 @@ func _handle_key(event: InputEventKey) -> void:
 			_save()
 		KEY_F9:
 			_load()
+		KEY_KP_ADD:
+			if tool_mode == 3:
+				_placement_scale = clampf(_placement_scale + 0.05, 0.75, 1.25)
+				_tool_flash("Scale: %.0f%%" % (_placement_scale * 100))
+		KEY_KP_SUBTRACT:
+			if tool_mode == 3:
+				_placement_scale = clampf(_placement_scale - 0.05, 0.75, 1.25)
+				_tool_flash("Scale: %.0f%%" % (_placement_scale * 100))
+		KEY_KP_ENTER:
+			if tool_mode == 3:
+				_default_scale = _placement_scale
+				_tool_flash("Default scale: %.0f%%" % (_default_scale * 100))
+		KEY_Z:
+			if tool_mode == 3:
+				_placement_rotation = wrapf(_placement_rotation - 60.0, 0.0, 360.0)
+				_tool_flash("Rotation: %.0f°" % _placement_rotation)
+		KEY_X:
+			if tool_mode == 3:
+				_placement_rotation = wrapf(_placement_rotation + 60.0, 0.0, 360.0)
+				_tool_flash("Rotation: %.0f°" % _placement_rotation)
+
+
+func _set_tool(mode: int) -> void:
+	if tool_mode == 3 and mode != 3:
+		_remove_ghost()
+	tool_mode = mode
+	_level_target = Vector3i(999999, 999999, -1999998)
+	_flatten_captured = false
+	painting = false
+	erasing = false
+	_last_debug_hover_hex = Vector3i(999999, 999999, -1999998)
+	_needs_overlay_rebuild = true
+	_update_tool_buttons()
+	_update_ui()
 
 
 func _regenerate_map() -> void:
+	_remove_ghost()
 	cells.clear()
 	chunk_manager.cells = cells
 	chunk_manager._loaded_chunk_origins.clear()
@@ -608,6 +988,10 @@ func _regenerate_map() -> void:
 	roads.clear()
 	placed_blocks.clear()
 	_free_all_block_instances()
+	placed_objects.clear()
+	_free_all_object_instances()
+	resource_cache.clear()
+	_free_all_decorations()
 	_pending_chunks.clear()
 	_pending_rivers.clear()
 	_needs_save = false
@@ -620,7 +1004,7 @@ func _regenerate_map() -> void:
 # ============================================================================
 func _save_map() -> void:
 	var save_path := "res://map_save.json"
-	chunk_manager.save_map(save_path, river_cells, road_cells, vertex_subs, chunks_with_rivers, roads, placed_blocks)
+	chunk_manager.save_map(save_path, river_cells, road_cells, vertex_subs, chunks_with_rivers, roads, placed_blocks, placed_objects)
 
 
 func _load_map_from(path: String) -> bool:
@@ -636,8 +1020,12 @@ func _load_map_from(path: String) -> bool:
 		roads.append(r)
 	placed_blocks = loaded.get("blocks", {})
 	_rebuild_block_instances()
+	placed_objects = loaded.get("objects", {})
+	_rebuild_object_instances()
+	_recompute_all_resources()
 	_invalidate_draw_cache()
 	_needs_rebuild = true
+	_needs_decoration_rebuild = true
 	return true
 
 
@@ -652,7 +1040,7 @@ func _quick_load() -> void:
 
 
 func _save() -> void:
-	chunk_manager.save_map("res://map_save_slot.json", river_cells, road_cells, vertex_subs, chunks_with_rivers, roads, placed_blocks)
+	chunk_manager.save_map("res://map_save_slot.json", river_cells, road_cells, vertex_subs, chunks_with_rivers, roads, placed_blocks, placed_objects)
 	_tool_flash("Saved")
 
 
@@ -697,9 +1085,9 @@ func _elevation_to_color(e: float) -> Color:
 
 
 func _get_cell_height(cell: HexCellData) -> float:
+	var step: float = ELEVATION_STEPS[elevation_step_idx]
 	if _is_water_biome(cell.biome):
 		return WATER_HEIGHT
-	var step: float = ELEVATION_STEPS[elevation_step_idx]
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
 	if step <= 0.0:
 		return HEX_SIZE
@@ -713,9 +1101,9 @@ func _get_cell_height(cell: HexCellData) -> float:
 # ============================================================================
 func _paint_river_at(screen_pos: Vector2, erase: bool) -> void:
 	var world_pos := _screen_to_world_3d(screen_pos)
-	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
 	if world_pos.x == INF:
 		return
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
 	if erase:
 		if _cell_exists(hex):
 			var best_sub := _find_closest_sub_hex(hex, world_pos)
@@ -939,18 +1327,423 @@ func _place_road_at(screen_pos: Vector2) -> void:
 		_needs_overlay_rebuild = true
 
 
-func _place_block_at(screen_pos: Vector2) -> void:
+func _place_object_at(screen_pos: Vector2) -> void:
+	if selected_model_path.is_empty():
+		_tool_flash("No model selected")
+		return
 	var world_pos := _screen_to_world_3d(screen_pos)
 	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
 	if not _cell_exists(hex):
 		return
-	if placed_blocks.has(hex):
-		placed_blocks.erase(hex)
-		_free_block_instance(hex)
-	else:
-		placed_blocks[hex] = true
-		_create_block_instance(hex)
+	_place_object_on_hex(hex, selected_model_path, _placement_rotation, _placement_scale)
 	_needs_overlay_rebuild = true
+
+
+func _place_object_on_hex(hex: Vector3i, model_path: String, rot: float = 0.0, scl: float = 1.0) -> void:
+	_remove_object_at(hex)
+	placed_objects[hex] = {"path": model_path, "rotation": rot, "scale": scl}
+	if not ResourceLoader.exists(model_path):
+		return
+	var scene: PackedScene = load(model_path)
+	if not scene:
+		return
+	var instance: Node3D = scene.instantiate()
+	_objects_container.add_child(instance)
+	var cell: HexCellData = cells[hex]
+	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var height := _get_cell_height(cell)
+	instance.position = Vector3(hpos.x, height, hpos.z)
+	instance.rotation_degrees.y = rot
+	instance.scale = Vector3(scl, scl, scl)
+	_placed_object_instances[hex] = instance
+
+
+func _remove_object_at(hex: Vector3i) -> void:
+	placed_objects.erase(hex)
+	if _placed_object_instances.has(hex):
+		var inst: Node3D = _placed_object_instances[hex]
+		_placed_object_instances.erase(hex)
+		if is_instance_valid(inst):
+			inst.queue_free()
+
+
+func _free_all_object_instances() -> void:
+	for hex in _placed_object_instances:
+		var inst: Node3D = _placed_object_instances[hex]
+		if is_instance_valid(inst):
+			inst.queue_free()
+	_placed_object_instances.clear()
+
+
+func _rebuild_object_instances() -> void:
+	_free_all_object_instances()
+	for hex in placed_objects.keys():
+		var obj_data: Variant = placed_objects[hex]
+		if obj_data is String:
+			_place_object_on_hex(hex, obj_data)
+		elif obj_data is Dictionary:
+			_place_object_on_hex(hex, obj_data["path"], obj_data.get("rotation", 0.0), obj_data.get("scale", 1.0))
+
+
+func _update_object_instances() -> void:
+	for hex in placed_objects.keys():
+		var obj_data: Variant = placed_objects[hex]
+		var model_path: String
+		var rot: float = 0.0
+		var scl: float = 1.0
+		if obj_data is String:
+			model_path = obj_data
+		elif obj_data is Dictionary:
+			model_path = obj_data["path"]
+			rot = obj_data.get("rotation", 0.0)
+			scl = obj_data.get("scale", 1.0)
+		else:
+			continue
+		if not _placed_object_instances.has(hex):
+			_place_object_on_hex(hex, model_path, rot, scl)
+			continue
+		var cell: HexCellData = cells[hex]
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var height := _get_cell_height(cell)
+		var inst: Node3D = _placed_object_instances[hex]
+		inst.position = Vector3(hpos.x, height, hpos.z)
+		inst.rotation_degrees.y = rot
+		inst.scale = Vector3(scl, scl, scl)
+
+
+# ============================================================================
+# RESOURCE HEATMAP & AUTO-DECORATIONS
+# ============================================================================
+func _resource_noise(hash_val: float) -> float:
+	var x := sin(hash_val * 127.1 + hash_val * 311.7) * 43758.5453
+	return x - floor(x)
+
+
+func _resource_noise2(hash_val: float) -> float:
+	var x := sin(hash_val * 419.2 + hash_val * 371.9) * 21458.3134
+	return x - floor(x)
+
+
+func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
+	var resources: Array[Dictionary] = []
+	if not _cell_exists(hex):
+		return resources
+	var cell: HexCellData = cells[hex]
+	if cell.biome == BIOME_DEEP_WATER or cell.biome == BIOME_WATER or cell.biome == BIOME_BEACH or cell.biome == BIOME_LAKE:
+		return resources
+	var hex_h := float(hex.x) * 0.7 + float(hex.y) * 1.3
+	var cluster := _resource_noise(hex_h)
+	var in_tree_cluster := cluster < 0.10
+	var in_mountain_cluster := cluster > 0.88 and cluster < 0.95
+	var in_rock_cluster := cluster > 0.62 and cluster < 0.67
+	for sub_idx in TOTAL_SUBS:
+		if _is_sub_hex_water(hex, sub_idx) or _count_sub_hex_water_neighbors(hex, sub_idx) > 0:
+			continue
+		if river_cells.has(hex) and sub_idx in river_cells[hex]:
+			continue
+		var h := float(hex.x) * 12.9898 + float(hex.y) * 78.233 + float(sub_idx) * 45.164
+		var density := _resource_noise(h)
+		var model_path := ""
+		var resource_type := ""
+		match cell.biome:
+			BIOME_GRASS:
+				if in_tree_cluster and density > 0.40:
+					resource_type = "tree"
+					model_path = RESOURCE_TREE_MODELS[int(h * 3.0) % RESOURCE_TREE_MODELS.size()]
+				elif not in_tree_cluster and density > 0.93:
+					resource_type = "tree"
+					model_path = RESOURCE_TREE_MODELS[int(h * 3.0) % RESOURCE_TREE_MODELS.size()]
+			BIOME_STONE:
+				if in_mountain_cluster and density > 0.35:
+					resource_type = "mountain"
+					model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
+				elif not in_mountain_cluster and density > 0.92:
+					resource_type = "mountain"
+					model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
+			BIOME_DIRT:
+				if in_rock_cluster and density > 0.45:
+					resource_type = "rock"
+					model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+				elif not in_rock_cluster and density > 0.94:
+					resource_type = "rock"
+					model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+		if not resource_type.is_empty():
+			resources.append({"sub_idx": sub_idx, "type": resource_type, "model": model_path})
+	return resources
+
+
+func _recompute_all_resources() -> void:
+	resource_cache.clear()
+	for hex in cells:
+		var res := _compute_resources_for_hex(hex)
+		if not res.is_empty():
+			resource_cache[hex] = res
+
+
+func _compute_chunk_resources(ck: Vector2i) -> void:
+	for q in range(ck.x * CHUNK_SIZE, (ck.x + 1) * CHUNK_SIZE):
+		for r in range(ck.y * CHUNK_SIZE, (ck.y + 1) * CHUNK_SIZE):
+			var hex := Vector3i(q, r, -q - r)
+			if _cell_exists(hex) and not resource_cache.has(hex):
+				var res := _compute_resources_for_hex(hex)
+				if not res.is_empty():
+					resource_cache[hex] = res
+
+
+func _load_decoration_mesh(model_path: String) -> Mesh:
+	if _decoration_mesh_cache.has(model_path):
+		return _decoration_mesh_cache[model_path]
+	if not ResourceLoader.exists(model_path):
+		return null
+	var scene: PackedScene = load(model_path)
+	if not scene:
+		return null
+	var root := scene.instantiate()
+	var mesh: Mesh = _extract_mesh_from_node(root)
+	_free_scene_children(root)
+	if mesh:
+		_decoration_mesh_cache[model_path] = mesh
+	return mesh
+
+
+func _extract_mesh_from_node(node: Node) -> Mesh:
+	if node is MeshInstance3D:
+		return node.mesh
+	for child in node.get_children():
+		var m := _extract_mesh_from_node(child)
+		if m:
+			return m
+	return null
+
+
+func _free_scene_children(node: Node) -> void:
+	for child in node.get_children():
+		node.remove_child(child)
+		child.queue_free()
+
+
+func _rebuild_decorations() -> void:
+	_free_all_decorations()
+	_ensure_draw_cache()
+	var model_instances: Dictionary = {}
+	for hex in _cached_visible_hexes:
+		if not resource_cache.has(hex) or not _cell_exists(hex):
+			continue
+		var cell: HexCellData = cells[hex]
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var height := _get_cell_height(cell)
+		for res in resource_cache[hex]:
+			var model_path: String = res["model"]
+			var sub_idx: int = res["sub_idx"]
+			if not model_instances.has(model_path):
+				model_instances[model_path] = []
+			var local := _get_sub_hex_local_pos(hex, sub_idx)
+			var h1 := _resource_noise(float(hex.x) * 99.1 + float(hex.y) * 67.3 + float(sub_idx) * 23.7)
+			var h2 := _resource_noise2(float(hex.x) * 47.3 + float(hex.y) * 83.1 + float(sub_idx) * 12.9)
+			var rot_step := int(h1 * 6.0) * 60.0
+			var mirror_x := h2 > 0.5
+			var mesh := _load_decoration_mesh(model_path)
+			if not mesh:
+				continue
+			var aabb: AABB = mesh.get_aabb()
+			var center := aabb.position + aabb.size * 0.5
+			var max_horiz := maxf(aabb.size.x, aabb.size.z)
+			var scl: float = SUB_HEX_SIZE * 0.925 / maxf(max_horiz, 0.01)
+			var sx: float = -scl if mirror_x else scl
+			var basis: Basis = Basis()
+			basis = basis.rotated(Vector3.UP, deg_to_rad(rot_step))
+			basis = basis.scaled(Vector3(sx, scl, scl))
+			var center_xz := Vector3(center.x, 0.0, center.z)
+			var rotated_center := basis * center_xz
+			var origin := Vector3(
+				hpos.x + local.x - rotated_center.x,
+				height - scl * aabb.position.y,
+				hpos.z + local.y - rotated_center.z
+			)
+			model_instances[model_path].append(Transform3D(basis, origin))
+	for model_path in model_instances:
+		var mesh := _load_decoration_mesh(model_path)
+		if not mesh:
+			continue
+		var transforms: Array = model_instances[model_path]
+		var mm := MultiMesh.new()
+		mm.mesh = mesh
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.instance_count = transforms.size()
+		for i in transforms.size():
+			mm.set_instance_transform(i, transforms[i])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		add_child(mi)
+		_decoration_multimeshes[model_path] = mi
+
+
+func _free_all_decorations() -> void:
+	for model_path in _decoration_multimeshes:
+		var mi: MultiMeshInstance3D = _decoration_multimeshes[model_path]
+		if is_instance_valid(mi):
+			mi.queue_free()
+	_decoration_multimeshes.clear()
+
+
+func _get_resource_counts(hex: Vector3i) -> Dictionary:
+	var counts := {}
+	if resource_cache.has(hex):
+		for res in resource_cache[hex]:
+			var rtype: String = res["type"]
+			counts[rtype] = counts.get(rtype, 0) + 1
+	return counts
+
+
+func _get_resource_color(rtype: String) -> Color:
+	match rtype:
+		"tree": return RESOURCE_TREE_COLOR
+		"mountain": return RESOURCE_MOUNTAIN_COLOR
+		"rock": return RESOURCE_ROCK_COLOR
+	return Color.WHITE
+
+
+# ============================================================================
+# TERRAIN EDITING TOOLS
+# ============================================================================
+func _raise_at(screen_pos: Vector2) -> void:
+	var world_pos := _screen_to_world_3d(screen_pos)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	if not _cell_exists(hex):
+		return
+	var cell: HexCellData = cells[hex]
+	var old_elev := cell.elevation
+	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
+	var step := elevation_step if elevation_step > 0.0 else 0.1
+	var delta := step / hex_width
+	if Input.is_key_pressed(KEY_SHIFT):
+		cell.elevation -= delta
+	else:
+		cell.elevation += delta
+	cell.elevation = clampf(cell.elevation, -1.0, 2.0)
+	if cell.elevation < old_elev - 0.01:
+		_apply_water_flow_on_lower(hex)
+	_needs_rebuild = true
+	_needs_decoration_rebuild = true
+	_invalidate_draw_cache()
+
+
+func _flatten_at(screen_pos: Vector2) -> void:
+	var world_pos := _screen_to_world_3d(screen_pos)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	if not _cell_exists(hex):
+		return
+	var cell: HexCellData = cells[hex]
+	if not _flatten_captured:
+		_flatten_target = cell.elevation
+		_flatten_captured = true
+	_flatten_single(hex)
+
+
+func _flatten_single(hex: Vector3i) -> void:
+	var cell: HexCellData = cells[hex]
+	var old_elev := cell.elevation
+	cell.elevation = _flatten_target
+	if cell.elevation < old_elev - 0.01:
+		_apply_water_flow_on_lower(hex)
+	_needs_rebuild = true
+	_needs_decoration_rebuild = true
+	_invalidate_draw_cache()
+
+
+func _level_at(screen_pos: Vector2) -> void:
+	var world_pos := _screen_to_world_3d(screen_pos)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	if not _cell_exists(hex):
+		return
+	if _level_target == Vector3i(999999, 999999, -1999998):
+		_level_target = hex
+		_tool_flash("Level target set: (%d,%d,%d)" % [hex.x, hex.y, hex.z])
+		return
+	if hex == _level_target:
+		return
+	var target_cell: HexCellData = cells[_level_target]
+	var cell: HexCellData = cells[hex]
+	var old_elev := cell.elevation
+	cell.elevation = target_cell.elevation
+	if cell.elevation < old_elev - 0.01:
+		_apply_water_flow_on_lower(hex)
+	_needs_rebuild = true
+	_needs_decoration_rebuild = true
+	_invalidate_draw_cache()
+
+
+# ============================================================================
+# WATER FLOW MECHANICS
+# ============================================================================
+func _water_flow_at(screen_pos: Vector2) -> void:
+	var world_pos := _screen_to_world_3d(screen_pos)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	if not _cell_exists(hex):
+		return
+	_propagate_water(hex)
+	_needs_rebuild = true
+	_needs_decoration_rebuild = true
+	_invalidate_draw_cache()
+
+
+func _propagate_water(hex: Vector3i) -> void:
+	var cell: HexCellData = cells[hex]
+	if _is_water_biome(cell.biome):
+		return
+	var neighbors := HexGridMath.cube_neighbors(hex)
+	var water_neighbors: Array[Vector3i] = []
+	for nb in neighbors:
+		if _cell_exists(nb) and _is_water_biome(cells[nb].biome):
+			water_neighbors.append(nb)
+	if water_neighbors.is_empty():
+		return
+	var has_flowing_water := false
+	for wn in water_neighbors:
+		if cells[wn].elevation <= cell.elevation + 0.01:
+			has_flowing_water = true
+			break
+	if not has_flowing_water:
+		return
+	var roll := randf()
+	if roll < 0.4:
+		return
+	var picked: Vector3i = water_neighbors[randi() % water_neighbors.size()]
+	cell.biome = cells[picked].biome
+	cell.color = cells[picked].color
+	_rebuild_block_instances()
+	_rebuild_object_instances()
+
+
+func _apply_water_flow_on_lower(hex: Vector3i) -> void:
+	var cell: HexCellData = cells[hex]
+	if _is_water_biome(cell.biome):
+		return
+	var neighbors := HexGridMath.cube_neighbors(hex)
+	var water_neighbors: Array[Vector3i] = []
+	var all_neighbors: Array[Vector3i] = []
+	for nb in neighbors:
+		if _cell_exists(nb):
+			all_neighbors.append(nb)
+			if _is_water_biome(cells[nb].biome) and cells[nb].elevation <= cell.elevation + 0.01:
+				water_neighbors.append(nb)
+	var target_biome: int = -1
+	var target_color: Color = Color.WHITE
+	if not water_neighbors.is_empty():
+		var wn := water_neighbors[randi() % water_neighbors.size()]
+		target_biome = cells[wn].biome
+		target_color = cells[wn].color
+	elif not all_neighbors.is_empty():
+		var roll := randf()
+		if roll >= 0.4:
+			var nb := all_neighbors[randi() % all_neighbors.size()]
+			target_biome = cells[nb].biome
+			target_color = cells[nb].color
+	if target_biome >= 0:
+		cell.biome = target_biome
+		cell.color = target_color
+		_rebuild_block_instances()
+		_rebuild_object_instances()
 
 
 func _create_block_instance(hex: Vector3i) -> void:
@@ -1406,7 +2199,7 @@ func _paint_river_path(path: Array[Vector3i]) -> void:
 # ============================================================================
 # SUB-HEX POSITIONS
 # ============================================================================
-func _get_sub_hex_local_pos(parent_hex: Vector3i, sub_idx: int) -> Vector2:
+func _get_sub_hex_local_pos(_parent_hex: Vector3i, sub_idx: int) -> Vector2:
 	if sub_idx == 0:
 		return Vector2.ZERO
 	elif sub_idx >= VERTEX_OFFSET:
@@ -1479,12 +2272,14 @@ func _get_visible_hex_range() -> Array[Vector3i]:
 	min_z -= margin
 	max_z += margin
 
-	var c_min := HexGridMath.world_to_cube_flat_top(Vector3(min_x, 0, min_z), HEX_SIZE)
-	var c_max := HexGridMath.world_to_cube_flat_top(Vector3(max_x, 0, max_z), HEX_SIZE)
-	var range_min_q := mini(c_min.x, c_max.x) - 2
-	var range_max_q := maxi(c_min.x, c_max.x) + 2
-	var range_min_r := mini(c_min.y, c_max.y) - 2
-	var range_max_r := maxi(c_min.y, c_max.y) + 2
+	var h00 := HexGridMath.world_to_cube_flat_top(Vector3(min_x, 0, min_z), HEX_SIZE)
+	var h01 := HexGridMath.world_to_cube_flat_top(Vector3(min_x, 0, max_z), HEX_SIZE)
+	var h10 := HexGridMath.world_to_cube_flat_top(Vector3(max_x, 0, min_z), HEX_SIZE)
+	var h11 := HexGridMath.world_to_cube_flat_top(Vector3(max_x, 0, max_z), HEX_SIZE)
+	var range_min_q := mini(mini(h00.x, h01.x), mini(h10.x, h11.x)) - 2
+	var range_max_q := maxi(maxi(h00.x, h01.x), maxi(h10.x, h11.x)) + 2
+	var range_min_r := mini(mini(h00.y, h01.y), mini(h10.y, h11.y)) - 2
+	var range_max_r := maxi(maxi(h00.y, h01.y), maxi(h10.y, h11.y)) + 2
 
 	var result: Array[Vector3i] = []
 	for q in range(range_min_q, range_max_q + 1):
@@ -1645,6 +2440,18 @@ func _rebuild_overlay_mesh() -> void:
 
 	if tool_mode == 1:
 		_add_river_debug_overlay_tris(imm)
+
+	if show_resources:
+		for hex in _cached_visible_hexes:
+			if not resource_cache.has(hex) or not _cell_exists(hex):
+				continue
+			var cell: HexCellData = cells[hex]
+			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+			var height := _get_cell_height(cell) + 0.04
+			for res in resource_cache[hex]:
+				var local := _get_sub_hex_local_pos(hex, res["sub_idx"])
+				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+				_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, _get_resource_color(res["type"]))
 
 	imm.surface_end()
 	overlay_mesh_instance.mesh = imm

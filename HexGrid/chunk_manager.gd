@@ -23,9 +23,9 @@ const BIOME_COLORS: Array = [
 	Color(0.32, 0.55, 0.82),
 ]
 
-var noise_freq: float = 0.008
+var noise_freq: float = 0.03
 var noise_seed: int = 42
-var detail_freq: float = 0.08
+var detail_freq: float = 0.1
 var detail_seed: int = 1042
 var fractal_octaves: int = 3
 var fractal_lacunarity: float = 2.0
@@ -41,14 +41,8 @@ var _detail_noise: FastNoiseLite
 func randomize_seeds() -> void:
 	noise_seed = randi()
 	detail_seed = randi()
-	noise_freq = randf_range(0.005, 0.015)
-	detail_freq = randf_range(0.05, 0.12)
-	if _noise:
-		_noise.seed = noise_seed
-		_noise.frequency = noise_freq
-	if _detail_noise:
-		_detail_noise.seed = detail_seed
-		_detail_noise.frequency = detail_freq
+	noise_freq = randf_range(0.015, 0.06)
+	detail_freq = randf_range(0.05, 0.2)
 
 var cells: Dictionary
 var _loaded_chunk_origins: Dictionary = {}
@@ -96,7 +90,7 @@ func generate_batch(batch: Array) -> void:
 	_last_batch_generated = true
 
 
-func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictionary = {}, p_vertex_subs: Dictionary = {}, p_chunks_with_rivers: Dictionary = {}, p_roads: Array = [], p_blocks: Dictionary = {}) -> void:
+func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictionary = {}, p_vertex_subs: Dictionary = {}, p_chunks_with_rivers: Dictionary = {}, p_roads: Array = [], p_blocks: Dictionary = {}, p_objects: Dictionary = {}) -> void:
 	var data: Dictionary = {
 		"noise": {
 			"freq": noise_freq,
@@ -117,6 +111,7 @@ func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictio
 		"vertex_subs": {},
 		"chunks_with_rivers": [],
 		"blocks": [],
+		"objects": {},
 	}
 	for key in cells:
 		var c: HexCellData = cells[key]
@@ -143,6 +138,8 @@ func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictio
 		data["chunks_with_rivers"].append([ck.x, ck.y])
 	for b_hex in p_blocks:
 		data["blocks"].append([b_hex.x, b_hex.y, b_hex.z])
+	for o_hex in p_objects:
+		data["objects"][str(o_hex)] = p_objects[o_hex]
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		push_error("ChunkManager: Cannot write to " + path)
@@ -245,6 +242,15 @@ func load_map(path: String) -> Dictionary:
 	for b_arr in root.get("blocks", []):
 		blocks[Vector3i(b_arr[0], b_arr[1], b_arr[2])] = true
 	result["blocks"] = blocks
+	var objects: Dictionary = {}
+	for key_str in root.get("objects", {}):
+		var key_string: String = str(key_str)
+		var stripped: String = key_string.strip_edges().replace("(", "").replace(")", "")
+		var parts: PackedStringArray = stripped.split(",")
+		if parts.size() >= 3:
+			var hex := Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
+			objects[hex] = root["objects"][key_str]
+	result["objects"] = objects
 	return result
 
 

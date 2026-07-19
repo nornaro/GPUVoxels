@@ -35,3 +35,11 @@ opencode.json
 .codex/
 .vibe/
 .aider*
+
+# Map save backups
+backups/
+map_save.json
+map_image.png
+mcp_server.log
+mcp_settings.cfg
+mcp_tool_state.cfg

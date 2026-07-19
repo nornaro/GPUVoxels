@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" load_steps=4 format=4 uid="uid://vhca3vcdwwyi"]
+[gd_resource type="ArrayMesh" format=4 uid="uid://vhca3vcdwwyi"]
 
 [ext_resource type="Texture2D" uid="uid://d3v58iy3kuasl" path="res://Textures/hexagons_medieval.png" id="1_wysrw"]
 
