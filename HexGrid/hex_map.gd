@@ -1519,7 +1519,7 @@ func _is_tree_model(model_path: String) -> bool:
 
 
 func _is_evergreen(model_path: String) -> bool:
-	return model_path.contains("trees_B") or model_path.contains("tree_single_B")
+	return model_path.contains("trees_A") or model_path.contains("tree_single_A")
 
 
 func _get_tree_material(model_path: String, albedo_tex: Texture2D = null) -> ShaderMaterial:
