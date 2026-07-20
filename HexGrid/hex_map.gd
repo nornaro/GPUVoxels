@@ -735,14 +735,14 @@ func _process(delta: float) -> void:
 		_update_block_instances()
 		_update_object_instances()
 		_needs_data_rebuild = false
+		if show_smooth_terrain:
+			_needs_smooth_rebuild = true
 
 	if _needs_rebuild:
 		_rebuild_hex_multimesh()
 		_rebuild_overlay_mesh()
 		_rebuild_grid_lines()
 		_rebuild_water_mesh()
-		if show_smooth_terrain:
-			_needs_smooth_rebuild = true
 		_needs_rebuild = false
 		_needs_overlay_rebuild = false
 	elif _needs_overlay_rebuild:
@@ -2728,6 +2728,19 @@ func _rebuild_smooth_terrain() -> void:
 						height = WATER_HEIGHT
 				else:
 					height = _get_cell_height(nc, nearest_hex)
+					var hex_pos := HexGridMath.cube_to_world_flat_top(nearest_hex, HEX_SIZE)
+					var dist_to_center := Vector2(wx - hex_pos.x, wz - hex_pos.z).length()
+					var blend_radius := HEX_SIZE * 0.85
+					if dist_to_center > blend_radius:
+						for nb in HexGridMath.cube_neighbors(nearest_hex):
+							if _cell_exists(nb) and _is_water_biome(cells[nb].biome):
+								var nb_pos := HexGridMath.cube_to_world_flat_top(nb, HEX_SIZE)
+								var nb_dist := Vector2(wx - nb_pos.x, wz - nb_pos.z).length()
+								var water_h: float = _water_body_heights.get(nb, WATER_HEIGHT)
+								var t := clampf((dist_to_center - blend_radius) / (HEX_SIZE * 0.3), 0.0, 1.0)
+								var nb_t := clampf(1.0 - nb_dist / (HEX_SIZE * 1.2), 0.0, 1.0)
+								height = lerpf(height, water_h, t * nb_t)
+								break
 			else:
 				height = (chunk_manager.sample_height(wpos) - HEX_SIZE) * elev_step + HEX_SIZE
 			var biome := chunk_manager.sample_biome(wpos)
