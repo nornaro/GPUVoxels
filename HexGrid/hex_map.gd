@@ -648,7 +648,7 @@ func _update_ghost_position() -> void:
 	_ghost_instance.visible = true
 	var cell: HexCellData = cells[hex]
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-	var height := _get_cell_height(cell)
+	var height := _get_cell_height(cell, hex)
 	_ghost_instance.position = Vector3(hpos.x, height, hpos.z)
 	_ghost_instance.rotation_degrees.y = _placement_rotation
 	_ghost_instance.scale = Vector3(_placement_scale, _placement_scale, _placement_scale)
@@ -752,7 +752,7 @@ func _update_hover_info() -> void:
 		var sub_type := "Sub"
 		if best_sub >= VERTEX_OFFSET:
 			sub_type = "Vertex"
-		var display_h: float = _get_cell_height(cell)
+		var display_h: float = _get_cell_height(cell, hex)
 		var labels := ""
 		if _is_hex_river(hex):
 			labels += "  |  RIVER(%d)" % _hex_river_count(hex)
@@ -1220,9 +1220,26 @@ func _elevation_to_color(e: float) -> Color:
 	return Color(t, t, t, 0.4)
 
 
-func _get_cell_height(cell: HexCellData) -> float:
+func _get_water_height_for_hex(hex: Vector3i) -> float:
+	var min_land := INF
+	for nb in HexGridMath.cube_neighbors(hex):
+		if _cell_exists(nb):
+			var nc: HexCellData = cells[nb]
+			if not _is_water_biome(nc.biome):
+				var ne := maxf(nc.elevation, 0.0)
+				var h := ne * HEX_SIZE * HexGridMath.SQRT3 * ELEVATION_STEPS[elevation_step_idx] + HEX_SIZE
+				if h < min_land:
+					min_land = h
+	if min_land < INF:
+		return min_land - 0.2
+	return WATER_HEIGHT
+
+
+func _get_cell_height(cell: HexCellData, hex := Vector3i.ZERO) -> float:
 	var step: float = ELEVATION_STEPS[elevation_step_idx]
 	if _is_water_biome(cell.biome):
+		if hex != Vector3i.ZERO:
+			return _get_water_height_for_hex(hex)
 		return WATER_HEIGHT
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
 	var e := maxf(cell.elevation, 0.0)
@@ -1484,7 +1501,7 @@ func _place_object_on_hex(hex: Vector3i, model_path: String, rot: float = 0.0, s
 	_objects_container.add_child(instance)
 	var cell: HexCellData = cells[hex]
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-	var height := _get_cell_height(cell)
+	var height := _get_cell_height(cell, hex)
 	instance.position = Vector3(hpos.x, height, hpos.z)
 	instance.rotation_degrees.y = rot
 	instance.scale = Vector3(scl, scl, scl)
@@ -1537,7 +1554,7 @@ func _update_object_instances() -> void:
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell)
+		var height := _get_cell_height(cell, hex)
 		var inst: Node3D = _placed_object_instances[hex]
 		inst.position = Vector3(hpos.x, height, hpos.z)
 		inst.rotation_degrees.y = rot
@@ -1720,7 +1737,7 @@ func _rebuild_decorations() -> void:
 			else:
 				base_height = (s_raw - HEX_SIZE) * elev_step + HEX_SIZE
 		else:
-			base_height = _get_cell_height(cell)
+			base_height = _get_cell_height(cell, hex)
 		for res in resource_cache[hex]:
 			var model_path: String = res["model"]
 			if model_path.is_empty():
@@ -1960,7 +1977,7 @@ func _create_block_instance(hex: Vector3i) -> void:
 		return
 	var cell: HexCellData = cells[hex]
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-	var height := _get_cell_height(cell)
+	var height := _get_cell_height(cell, hex)
 	var mi := MeshInstance3D.new()
 	mi.mesh = _hex_grass_mesh
 	mi.rotation_degrees.y = 30.0
@@ -1999,7 +2016,7 @@ func _update_block_instances() -> void:
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell)
+		var height := _get_cell_height(cell, hex)
 		var mi: MeshInstance3D = _block_instances[hex]
 		mi.position = Vector3(hpos.x, height, hpos.z)
 		mi.scale.y = maxf(height, 0.05)
@@ -2576,7 +2593,7 @@ func _rebuild_hex_multimesh() -> void:
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell)
+		var height := _get_cell_height(cell, hex)
 		var draw_color := cell.color
 		if show_elevation_shade:
 			var elev_col := _elevation_to_color(cell.elevation)
@@ -2632,7 +2649,16 @@ func _rebuild_smooth_terrain() -> void:
 			var biome := chunk_manager.sample_biome(Vector3(wx, 0.0, wz))
 			var height: float
 			if biome <= ChunkManager.BIOME_WATER:
-				height = raw_height
+				var nearest_hex := HexGridMath.world_to_cube_flat_top(Vector3(wx, 0.0, wz), HEX_SIZE)
+				var min_land := INF
+				for nb in HexGridMath.cube_neighbors(nearest_hex):
+					if _cell_exists(nb):
+						var nc: HexCellData = cells[nb]
+						if not _is_water_biome(nc.biome):
+							var nh := _get_cell_height(nc, nb)
+							if nh < min_land:
+								min_land = nh
+				height = (min_land - 0.2) if min_land < INF else raw_height
 			else:
 				height = (raw_height - HEX_SIZE) * elev_step + HEX_SIZE
 			var col: Color = ChunkManager.BIOME_COLORS[clampi(biome, 0, ChunkManager.BIOME_COLORS.size() - 1)]
@@ -2671,7 +2697,7 @@ func _rebuild_overlay_mesh() -> void:
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell) + 0.05
+		var height := _get_cell_height(cell, hex) + 0.05
 		for sub_idx in river_cells[hex]:
 			var local := _get_sub_hex_local_pos(hex, sub_idx)
 			var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
@@ -2691,7 +2717,7 @@ func _rebuild_overlay_mesh() -> void:
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell) + 0.05
+		var height := _get_cell_height(cell, hex) + 0.05
 		var local := _get_sub_hex_local_pos(hex, VERTEX_OFFSET + vi)
 		var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
 		if not has_content:
@@ -2717,7 +2743,7 @@ func _rebuild_overlay_mesh() -> void:
 				continue
 			var cell: HexCellData = cells[hex]
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			var height := _get_cell_height(cell) + 0.03
+			var height := _get_cell_height(cell, hex) + 0.03
 			for i in TOTAL_SUBS:
 				var local := _get_sub_hex_local_pos(hex, i)
 				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
@@ -2744,7 +2770,7 @@ func _rebuild_overlay_mesh() -> void:
 			if show_smooth_terrain:
 				height = chunk_manager.sample_height(Vector3(hpos.x, 0.0, hpos.z)) + 0.04
 			else:
-				height = _get_cell_height(cell) + 0.04
+				height = _get_cell_height(cell, hex) + 0.04
 			for res in resource_cache[hex]:
 				var local := _get_sub_hex_local_pos(hex, res["sub_idx"])
 				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
@@ -2829,7 +2855,7 @@ func _add_sub_hex_fill_tris(imm: ImmediateMesh, hex: Vector3i, sub_idx: int, col
 		return
 	var cell: HexCellData = cells[hex]
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-	var height := _get_cell_height(cell) + 0.06
+	var height := _get_cell_height(cell, hex) + 0.06
 	var local := _get_sub_hex_local_pos(hex, sub_idx)
 	var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
 	_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, col)
@@ -2841,7 +2867,7 @@ func _add_river_debug_overlay_tris(imm: ImmediateMesh) -> void:
 		return
 	var cell: HexCellData = cells[hex]
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-	var height := _get_cell_height(cell) + 0.08
+	var height := _get_cell_height(cell, hex) + 0.08
 
 	var world_pos := _screen_to_world_3d(get_viewport().get_mouse_position())
 	var local := Vector2(world_pos.x - hpos.x, world_pos.z - hpos.z)
@@ -2889,7 +2915,7 @@ func _rebuild_grid_lines() -> void:
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell) + 0.02
+		var height := _get_cell_height(cell, hex) + 0.02
 		var cos_arr: PackedFloat32Array = PackedFloat32Array()
 		var sin_arr: PackedFloat32Array = PackedFloat32Array()
 		for i in 6:
