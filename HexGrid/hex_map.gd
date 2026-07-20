@@ -158,6 +158,9 @@ var _block_instances: Dictionary = {}
 var _needs_rebuild: bool = true
 var _needs_decoration_rebuild: bool = false
 var _needs_overlay_rebuild: bool = true
+var _needs_data_rebuild: bool = true
+var _needs_smooth_rebuild: bool = false
+var _smooth_rebuild_timer: float = 0.0
 var _water_body_heights: Dictionary = {}
 var _pending_resource_recompute: Array[Vector3i] = []
 
@@ -441,6 +444,7 @@ func _cycle_elevation_step() -> void:
 	elevation_step_idx = (elevation_step_idx + 1) % ELEVATION_STEPS.size()
 	elevation_step = ELEVATION_STEPS[elevation_step_idx]
 	_needs_rebuild = true
+	_needs_data_rebuild = true
 	_needs_decoration_rebuild = true
 	_tool_flash("Elevation: " + ELEVATION_STEP_NAMES[elevation_step_idx])
 
@@ -705,6 +709,7 @@ func _process(delta: float) -> void:
 	if not _pending_chunks.is_empty() or not _pending_rivers.is_empty():
 		if chunk_manager._last_batch_generated:
 			_needs_rebuild = true
+			_needs_data_rebuild = true
 			chunk_manager._last_batch_generated = false
 	else:
 		if _needs_save and not FORCE_REGENERATE:
@@ -725,21 +730,32 @@ func _process(delta: float) -> void:
 		if _pending_resource_recompute.is_empty():
 			_needs_decoration_rebuild = true
 
-	if _needs_rebuild:
+	if _needs_data_rebuild:
 		_build_water_body_heights()
+		_update_block_instances()
+		_update_object_instances()
+		_needs_data_rebuild = false
+
+	if _needs_rebuild:
 		_rebuild_hex_multimesh()
 		_rebuild_overlay_mesh()
 		_rebuild_grid_lines()
-		_update_block_instances()
-		_update_object_instances()
 		_rebuild_water_mesh()
 		if show_smooth_terrain:
-			_rebuild_smooth_terrain()
+			_needs_smooth_rebuild = true
 		_needs_rebuild = false
 		_needs_overlay_rebuild = false
 	elif _needs_overlay_rebuild:
 		_rebuild_overlay_mesh()
 		_needs_overlay_rebuild = false
+
+	if _needs_smooth_rebuild and show_smooth_terrain:
+		_smooth_rebuild_timer = 0.15
+		_needs_smooth_rebuild = false
+	if _smooth_rebuild_timer > 0.0:
+		_smooth_rebuild_timer -= delta
+		if _smooth_rebuild_timer <= 0.0 and show_smooth_terrain:
+			_rebuild_smooth_terrain()
 
 	if _needs_decoration_rebuild:
 		_rebuild_decorations()
@@ -1190,6 +1206,7 @@ func _load_map_from(path: String) -> bool:
 	_pending_resource_recompute.assign(cells.keys())
 	_invalidate_draw_cache()
 	_needs_rebuild = true
+	_needs_data_rebuild = true
 	_needs_decoration_rebuild = true
 	return true
 
@@ -1887,7 +1904,7 @@ func _raise_at(screen_pos: Vector2) -> void:
 		return
 	var cell: HexCellData = cells[hex]
 	var old_elev := cell.elevation
-	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
+	var hex_width := HEX_SIZE * HexGridMath.SQRT3
 	var step := elevation_step if elevation_step > 0.0 else 0.1
 	var delta := step / hex_width
 	if Input.is_key_pressed(KEY_SHIFT):
@@ -1898,6 +1915,7 @@ func _raise_at(screen_pos: Vector2) -> void:
 	if cell.elevation < old_elev - 0.01:
 		_apply_water_flow_on_lower(hex)
 	_needs_rebuild = true
+	_needs_data_rebuild = true
 	_needs_decoration_rebuild = true
 	_invalidate_draw_cache()
 
@@ -1921,6 +1939,7 @@ func _flatten_single(hex: Vector3i) -> void:
 	if cell.elevation < old_elev - 0.01:
 		_apply_water_flow_on_lower(hex)
 	_needs_rebuild = true
+	_needs_data_rebuild = true
 	_needs_decoration_rebuild = true
 	_invalidate_draw_cache()
 
@@ -1943,6 +1962,7 @@ func _level_at(screen_pos: Vector2) -> void:
 	if cell.elevation < old_elev - 0.01:
 		_apply_water_flow_on_lower(hex)
 	_needs_rebuild = true
+	_needs_data_rebuild = true
 	_needs_decoration_rebuild = true
 	_invalidate_draw_cache()
 
@@ -1957,6 +1977,7 @@ func _water_flow_at(screen_pos: Vector2) -> void:
 		return
 	_propagate_water(hex)
 	_needs_rebuild = true
+	_needs_data_rebuild = true
 	_needs_decoration_rebuild = true
 	_invalidate_draw_cache()
 
@@ -2621,24 +2642,27 @@ func _create_hex_prism_mesh() -> ArrayMesh:
 # ============================================================================
 func _rebuild_hex_multimesh() -> void:
 	var visible_hexes := _cached_visible_hexes
-	var hex_count := 0
+	var valid_hexes: Array[Vector3i] = []
 	for hex in visible_hexes:
 		if _cell_exists(hex):
-			hex_count += 1
+			valid_hexes.append(hex)
+	var hex_count := valid_hexes.size()
 	if hex_count == 0:
 		hex_multimesh_instance.multimesh = null
 		return
 
-	var mm := MultiMesh.new()
-	mm.mesh = _hex_prism_mesh
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.instance_count = hex_count
+	var mm: MultiMesh
+	if hex_multimesh_instance.multimesh and hex_multimesh_instance.multimesh.instance_count == hex_count:
+		mm = hex_multimesh_instance.multimesh
+	else:
+		mm = MultiMesh.new()
+		mm.mesh = _hex_prism_mesh
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.instance_count = hex_count
 
 	var idx := 0
-	for hex in visible_hexes:
-		if not _cell_exists(hex):
-			continue
+	for hex in valid_hexes:
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 		var height := _get_cell_height(cell, hex)
