@@ -43,7 +43,7 @@ const LAKE_LEVEL: float = -0.2
 
 const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.01, 0.001, 0.0]
 const ELEVATION_STEP_NAMES: Array[String] = ["Full", "1/10", "1/100", "1/1000", "Flat"]
-var elevation_step_idx: int = 0
+var elevation_step_idx: int = 1
 
 var cells: Dictionary = {}
 var chunk_manager: ChunkManager
@@ -158,6 +158,7 @@ var _needs_rebuild: bool = true
 var _needs_decoration_rebuild: bool = false
 var _needs_overlay_rebuild: bool = true
 var _water_body_heights: Dictionary = {}
+var _pending_resource_recompute: Array[Vector3i] = []
 
 var _cached_camera_yaw: float = NAN
 var _cached_camera_pitch: float = NAN
@@ -474,8 +475,8 @@ func _apply_hex_render_mode() -> void:
 			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		2:
-			_hex_mat.cull_mode = BaseMaterial3D.CULL_BACK
-			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 
 
 func _setup_bottom_palette(canvas: CanvasLayer) -> void:
@@ -699,6 +700,19 @@ func _process(delta: float) -> void:
 			_save_map()
 			_needs_save = false
 		_update_hover_info()
+
+	if not _pending_resource_recompute.is_empty():
+		var batch_size := 4096
+		var end_i := mini(_pending_resource_recompute.size(), batch_size)
+		for i in end_i:
+			var hex: Vector3i = _pending_resource_recompute[i]
+			if _cell_exists(hex) and not resource_cache.has(hex):
+				var res := _compute_resources_for_hex(hex)
+				if not res.is_empty():
+					resource_cache[hex] = res
+		_pending_resource_recompute = _pending_resource_recompute.slice(end_i)
+		if _pending_resource_recompute.is_empty():
+			_needs_decoration_rebuild = true
 
 	if _needs_rebuild:
 		_build_water_body_heights()
@@ -1160,7 +1174,8 @@ func _load_map_from(path: String) -> bool:
 	_rebuild_block_instances()
 	placed_objects = loaded.get("objects", {})
 	_rebuild_object_instances()
-	_recompute_all_resources()
+	resource_cache.clear()
+	_pending_resource_recompute.assign(cells.keys())
 	_invalidate_draw_cache()
 	_needs_rebuild = true
 	_needs_decoration_rebuild = true
@@ -1224,8 +1239,8 @@ func _elevation_to_color(e: float) -> Color:
 
 func _build_water_body_heights() -> void:
 	_water_body_heights.clear()
-	for hex in cells:
-		if not _is_water_biome(cells[hex].biome) or _water_body_heights.has(hex):
+	for hex in _cached_visible_hexes:
+		if not _cell_exists(hex) or not _is_water_biome(cells[hex].biome) or _water_body_heights.has(hex):
 			continue
 		var body: Array[Vector3i] = []
 		var queue: Array[Vector3i] = [hex]
@@ -2661,17 +2676,23 @@ func _rebuild_smooth_terrain() -> void:
 		for ix in cols:
 			var wx: float = min_x + float(ix) * step_grid
 			var wz: float = min_z + float(iz) * step_grid
-			var raw_height := chunk_manager.sample_height(Vector3(wx, 0.0, wz))
-			var biome := chunk_manager.sample_biome(Vector3(wx, 0.0, wz))
+			var wpos := Vector3(wx, 0.0, wz)
+			var nearest_hex := HexGridMath.world_to_cube_flat_top(wpos, HEX_SIZE)
 			var height: float
-			if biome <= ChunkManager.BIOME_WATER:
-				var nearest_hex := HexGridMath.world_to_cube_flat_top(Vector3(wx, 0.0, wz), HEX_SIZE)
-				if _water_body_heights.has(nearest_hex):
-					height = _water_body_heights[nearest_hex]
+			if _cell_exists(nearest_hex):
+				var nc: HexCellData = cells[nearest_hex]
+				if _is_water_biome(nc.biome):
+					if _water_body_heights.has(nearest_hex):
+						height = _water_body_heights[nearest_hex]
+					else:
+						height = chunk_manager.sample_height(wpos)
+						var raw_elev := (height - HEX_SIZE) / hex_width
+						height = raw_elev * hex_width * elev_step + HEX_SIZE
 				else:
-					height = raw_height
+					height = _get_cell_height(nc, nearest_hex)
 			else:
-				height = (raw_height - HEX_SIZE) * elev_step + HEX_SIZE
+				height = (chunk_manager.sample_height(wpos) - HEX_SIZE) * elev_step + HEX_SIZE
+			var biome := chunk_manager.sample_biome(wpos)
 			var col: Color = ChunkManager.BIOME_COLORS[clampi(biome, 0, ChunkManager.BIOME_COLORS.size() - 1)]
 			st.set_color(col)
 			st.set_uv(Vector2(float(ix) / float(cols - 1), float(iz) / float(rows - 1)))
