@@ -1714,7 +1714,16 @@ func _rebuild_decorations() -> void:
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 		var base_height: float
 		if show_smooth_terrain:
-			base_height = chunk_manager.sample_height(Vector3(hpos.x, 0.0, hpos.z))
+			var s_pos := Vector3(hpos.x, 0.0, hpos.z)
+			var s_biome := chunk_manager.sample_biome(s_pos)
+			var s_raw := chunk_manager.sample_height(s_pos)
+			var elev_step: float = ELEVATION_STEPS[elevation_step_idx]
+			if s_biome <= ChunkManager.BIOME_WATER:
+				base_height = s_raw
+			elif elev_step <= 0.0:
+				base_height = HEX_SIZE
+			else:
+				base_height = snappedf(s_raw, elev_step)
 		else:
 			base_height = _get_cell_height(cell)
 		for res in resource_cache[hex]:
@@ -2627,8 +2636,10 @@ func _rebuild_smooth_terrain() -> void:
 			var raw_height := chunk_manager.sample_height(Vector3(wx, 0.0, wz))
 			var biome := chunk_manager.sample_biome(Vector3(wx, 0.0, wz))
 			var height: float
-			if biome <= ChunkManager.BIOME_WATER or elev_step <= 0.0:
+			if biome <= ChunkManager.BIOME_WATER:
 				height = raw_height
+			elif elev_step <= 0.0:
+				height = HEX_SIZE
 			else:
 				height = snappedf(raw_height, elev_step)
 			var col: Color = ChunkManager.BIOME_COLORS[clampi(biome, 0, ChunkManager.BIOME_COLORS.size() - 1)]
