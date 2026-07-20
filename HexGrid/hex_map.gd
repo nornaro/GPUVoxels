@@ -2825,11 +2825,12 @@ func _rebuild_water_mesh() -> void:
 		var water_h: float = _water_body_heights.get(hex, WATER_HEIGHT) - 0.01
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 		var center := Vector3(hpos.x, water_h, hpos.z)
+		var r := HEX_SIZE * 1.05
 		for i in 6:
 			var a1 := deg_to_rad(60.0 * float(i))
 			var a2 := deg_to_rad(60.0 * float((i + 1) % 6))
-			var v1 := center + Vector3(cos(a1), 0.0, sin(a1)) * HEX_SIZE
-			var v2 := center + Vector3(cos(a2), 0.0, sin(a2)) * HEX_SIZE
+			var v1 := center + Vector3(cos(a1), 0.0, sin(a1)) * r
+			var v2 := center + Vector3(cos(a2), 0.0, sin(a2)) * r
 			st.set_normal(up)
 			st.add_vertex(center)
 			st.set_normal(up)

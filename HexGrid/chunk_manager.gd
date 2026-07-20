@@ -14,13 +14,13 @@ const BIOME_DIRT := 4
 const BIOME_STONE := 5
 
 const BIOME_COLORS: Array = [
-	Color(0.18, 0.35, 0.65),
-	Color(0.28, 0.52, 0.78),
-	Color(0.82, 0.77, 0.55),
-	Color(0.35, 0.55, 0.28),
-	Color(0.55, 0.42, 0.28),
-	Color(0.48, 0.48, 0.48),
-	Color(0.32, 0.55, 0.82),
+	Color(0.35, 0.30, 0.30, 1.0),
+	Color(0.70, 0.60, 0.60, 0.7),
+	Color(0.82, 0.77, 0.55, 1.0),
+	Color(0.35, 0.55, 0.28, 1.0),
+	Color(0.55, 0.42, 0.28, 1.0),
+	Color(0.48, 0.48, 0.48, 1.0),
+	Color(0.32, 0.55, 0.82, 1.0),
 ]
 
 var noise_freq: float = 0.03
