@@ -29,13 +29,13 @@ const BIOME_LAKE := 6
 const BIOME_NAMES := ["Deep Water", "Water", "Beach", "Grass", "Dirt", "Stone", "Lake"]
 
 var BIOME_COLORS: Array[Color] = [
-	Color(0.18, 0.35, 0.65),
-	Color(0.28, 0.52, 0.78),
+	Color(0.12, 0.12, 0.14),
+	Color(0.18, 0.18, 0.20),
 	Color(0.82, 0.77, 0.55),
 	Color(0.35, 0.55, 0.28),
 	Color(0.55, 0.42, 0.28),
 	Color(0.48, 0.48, 0.48),
-	Color(0.32, 0.55, 0.82),
+	Color(0.15, 0.15, 0.17),
 ]
 
 const WATER_LEVEL: float = -0.3
@@ -144,6 +144,7 @@ var _hex_mat: StandardMaterial3D
 var overlay_mesh_instance: MeshInstance3D
 var grid_lines_mesh_instance: MeshInstance3D
 var smooth_terrain_instance: MeshInstance3D
+var _water_mesh_instance: MeshInstance3D
 
 var camera_yaw: float = 45.0
 var camera_pitch: float = -55.0
@@ -280,6 +281,16 @@ func _setup_3d() -> void:
 	smooth_terrain_instance.material_override = smooth_mat
 	smooth_terrain_instance.visible = false
 	add_child(smooth_terrain_instance)
+
+	_water_mesh_instance = MeshInstance3D.new()
+	var water_mat := ShaderMaterial.new()
+	var water_shader := load("res://shaders/water.gdshader")
+	water_mat.shader = water_shader
+	water_mat.render_priority = 10
+	_water_mesh_instance.material_override = water_mat
+	_water_mesh_instance.visible = false
+	_water_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_water_mesh_instance)
 
 	_blocks_container = Node3D.new()
 	add_child(_blocks_container)
@@ -721,6 +732,7 @@ func _process(delta: float) -> void:
 		_rebuild_grid_lines()
 		_update_block_instances()
 		_update_object_instances()
+		_rebuild_water_mesh()
 		if show_smooth_terrain:
 			_rebuild_smooth_terrain()
 		_needs_rebuild = false
@@ -1235,6 +1247,11 @@ func _cell_exists(hex: Vector3i) -> bool:
 func _elevation_to_color(e: float) -> Color:
 	var t: float = clampf((e + 1.0) * 0.5, 0.0, 1.0)
 	return Color(t, t, t, 0.4)
+
+
+func _elevation_to_bw(e: float) -> Color:
+	var t: float = clampf((e + 1.0) * 0.5, 0.0, 1.0)
+	return Color(t, t, t, 0.85)
 
 
 func _build_water_body_heights() -> void:
@@ -2630,9 +2647,8 @@ func _rebuild_hex_multimesh() -> void:
 			var elev_col := _elevation_to_color(cell.elevation)
 			draw_color = draw_color.lerp(elev_col, 0.4)
 		if show_height:
-			var brightness: float = lerpf(0.4, 1.6, (cell.elevation + 1.0) * 0.5)
-			var height_col := Color(brightness, brightness, brightness, 0.35)
-			draw_color = draw_color.lerp(height_col, 0.35)
+			var bw := _elevation_to_bw(cell.elevation)
+			draw_color = draw_color.lerp(bw, 0.75)
 
 		var t := Transform3D(Basis().scaled(Vector3(HEX_SIZE, height, HEX_SIZE)), Vector3(hpos.x, 0.0, hpos.z))
 		mm.set_instance_transform(idx, t)
@@ -2685,9 +2701,7 @@ func _rebuild_smooth_terrain() -> void:
 					if _water_body_heights.has(nearest_hex):
 						height = _water_body_heights[nearest_hex]
 					else:
-						height = chunk_manager.sample_height(wpos)
-						var raw_elev := (height - HEX_SIZE) / hex_width
-						height = raw_elev * hex_width * elev_step + HEX_SIZE
+						height = WATER_HEIGHT
 				else:
 					height = _get_cell_height(nc, nearest_hex)
 			else:
@@ -2713,6 +2727,45 @@ func _rebuild_smooth_terrain() -> void:
 
 	st.generate_normals()
 	smooth_terrain_instance.mesh = st.commit()
+
+
+# ============================================================================
+# 3D MESH: REBUILD WATER SHADER PLANE
+# ============================================================================
+func _rebuild_water_mesh() -> void:
+	var water_hexes: Array[Vector3i] = []
+	for hex in _cached_visible_hexes:
+		if _cell_exists(hex) and _is_water_biome(cells[hex].biome):
+			water_hexes.append(hex)
+	if water_hexes.is_empty():
+		_water_mesh_instance.mesh = null
+		_water_mesh_instance.visible = false
+		return
+
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var up := Vector3.UP
+	var seen: Dictionary = {}
+	for hex in water_hexes:
+		if seen.has(hex):
+			continue
+		seen[hex] = true
+		var water_h: float = _water_body_heights.get(hex, WATER_HEIGHT) - 0.01
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		var center := Vector3(hpos.x, water_h, hpos.z)
+		for i in 6:
+			var a1 := deg_to_rad(60.0 * float(i))
+			var a2 := deg_to_rad(60.0 * float((i + 1) % 6))
+			var v1 := center + Vector3(cos(a1), 0.0, sin(a1)) * HEX_SIZE
+			var v2 := center + Vector3(cos(a2), 0.0, sin(a2)) * HEX_SIZE
+			st.set_normal(up)
+			st.add_vertex(center)
+			st.set_normal(up)
+			st.add_vertex(v1)
+			st.set_normal(up)
+			st.add_vertex(v2)
+	_water_mesh_instance.mesh = st.commit()
+	_water_mesh_instance.visible = true
 
 
 # ============================================================================
@@ -2776,13 +2829,14 @@ func _rebuild_overlay_mesh() -> void:
 			var cell: HexCellData = cells[hex]
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 			var height := _get_cell_height(cell, hex) + 0.03
+			var elev_col := _elevation_to_bw(cell.elevation)
 			for i in TOTAL_SUBS:
 				var local := _get_sub_hex_local_pos(hex, i)
 				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
 				if not has_content:
 					imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 					has_content = true
-				_add_flat_hex_wireframe(imm, center, SUB_HEX_SIZE, Color(1, 1, 1, 0.25))
+				_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, elev_col)
 
 	# River tool debug
 	if tool_mode == 1:
@@ -2798,14 +2852,19 @@ func _rebuild_overlay_mesh() -> void:
 				continue
 			var cell: HexCellData = cells[hex]
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			var height: float
-			if show_smooth_terrain:
-				height = chunk_manager.sample_height(Vector3(hpos.x, 0.0, hpos.z)) + 0.04
-			else:
-				height = _get_cell_height(cell, hex) + 0.04
 			for res in resource_cache[hex]:
 				var local := _get_sub_hex_local_pos(hex, res["sub_idx"])
-				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+				var sub_pos := Vector3(hpos.x + local.x, 0.0, hpos.z + local.y)
+				var sub_height: float
+				if show_smooth_terrain:
+					var sub_hex := HexGridMath.world_to_cube_flat_top(sub_pos, HEX_SIZE)
+					if _cell_exists(sub_hex):
+						sub_height = _get_cell_height(cells[sub_hex], sub_hex) + 0.04
+					else:
+						sub_height = _get_cell_height(cell, hex) + 0.04
+				else:
+					sub_height = _get_cell_height(cell, hex) + 0.04
+				var center := Vector3(sub_pos.x, sub_height, sub_pos.z)
 				if not has_content:
 					imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 					has_content = true
