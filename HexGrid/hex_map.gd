@@ -141,7 +141,6 @@ var _cached_chunk_max: Vector2i = Vector2i.ZERO
 var camera: Camera3D
 var hex_multimesh_instance: MultiMeshInstance3D
 var _hex_mat: StandardMaterial3D
-var _hex_render_mode_btn: Button
 var overlay_mesh_instance: MeshInstance3D
 var grid_lines_mesh_instance: MeshInstance3D
 var smooth_terrain_instance: MeshInstance3D
