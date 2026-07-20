@@ -64,6 +64,10 @@ var vertex_subs: Dictionary = {}
 ## Toggle elevation shading (Insert key). Colors hexes by elevation value.
 @export var show_elevation_shade: bool = false
 
+## Hex render mode: 0=original (top-only shaded), 1=shaded+sides, 2=flat+sides.
+var hex_render_mode: int = 0
+const HEX_RENDER_MODE_NAMES := ["Original", "Shaded+Sides", "Flat+Sides"]
+
 ## Current tool: 0=Navigate, 1=River, 2=Road, 3=Place, 4=Raise, 5=Flatten, 6=Level, 7=WaterFlow. Keys 1-8.
 @export_range(0, 7) var tool_mode: int = 0:
 	set(v):
@@ -133,6 +137,8 @@ var _cached_chunk_max: Vector2i = Vector2i.ZERO
 
 var camera: Camera3D
 var hex_multimesh_instance: MultiMeshInstance3D
+var _hex_mat: StandardMaterial3D
+var _hex_render_mode_btn: Button
 var overlay_mesh_instance: MeshInstance3D
 var grid_lines_mesh_instance: MeshInstance3D
 
@@ -229,11 +235,9 @@ func _setup_3d() -> void:
 	add_child(world_env)
 
 	hex_multimesh_instance = MultiMeshInstance3D.new()
-	var hex_mat := StandardMaterial3D.new()
-	hex_mat.vertex_color_use_as_albedo = true
-	hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	hex_multimesh_instance.material_override = hex_mat
+	_hex_mat = StandardMaterial3D.new()
+	_hex_mat.vertex_color_use_as_albedo = true
+	hex_multimesh_instance.material_override = _hex_mat
 	add_child(hex_multimesh_instance)
 
 	overlay_mesh_instance = MeshInstance3D.new()
@@ -341,6 +345,15 @@ func _setup_top_toolbar(canvas: CanvasLayer) -> void:
 		_top_toolbar.add_child(btn)
 		_tool_buttons.append(btn)
 
+	var sep := VSeparator.new()
+	_top_toolbar.add_child(sep)
+	var hex_mode_btn := Button.new()
+	hex_mode_btn.text = "Hex [T]"
+	hex_mode_btn.custom_minimum_size = Vector2(80, 26)
+	hex_mode_btn.pressed.connect(_cycle_hex_render_mode)
+	_top_toolbar.add_child(hex_mode_btn)
+	_hex_render_mode_btn = hex_mode_btn
+
 
 func _on_tool_button(mode: int) -> void:
 	_set_tool(mode)
@@ -349,6 +362,25 @@ func _on_tool_button(mode: int) -> void:
 func _update_tool_buttons() -> void:
 	for i in _tool_buttons.size():
 		_tool_buttons[i].button_pressed = (i == tool_mode)
+
+
+func _cycle_hex_render_mode() -> void:
+	hex_render_mode = (hex_render_mode + 1) % HEX_RENDER_MODE_NAMES.size()
+	_apply_hex_render_mode()
+	_tool_flash("Hex: " + HEX_RENDER_MODE_NAMES[hex_render_mode])
+
+
+func _apply_hex_render_mode() -> void:
+	match hex_render_mode:
+		0:
+			_hex_mat.cull_mode = BaseMaterial3D.CULL_BACK
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		1:
+			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		2:
+			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
 
 func _setup_bottom_palette(canvas: CanvasLayer) -> void:
@@ -941,6 +973,8 @@ func _handle_key(event: InputEventKey) -> void:
 			current_season = (current_season + 1) % SEASON_NAMES.size()
 			_update_tree_materials()
 			_tool_flash("Season: " + SEASON_NAMES[current_season])
+		KEY_T:
+			_cycle_hex_render_mode()
 		KEY_F6:
 			_quick_save()
 		KEY_F7:
