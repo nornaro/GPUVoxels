@@ -189,6 +189,17 @@ const RESOURCE_TREE_COLOR := Color(0.2, 0.7, 0.2, 0.5)
 const RESOURCE_MOUNTAIN_COLOR := Color(0.6, 0.5, 0.5, 0.5)
 const RESOURCE_ROCK_COLOR := Color(0.5, 0.5, 0.4, 0.5)
 
+const MINERAL_TYPES := ["silver", "gold", "tungsten", "titanium", "copper"]
+const MINERAL_COLORS := {
+	"silver": Color(0.75, 0.75, 0.8, 0.6),
+	"gold": Color(0.95, 0.8, 0.2, 0.6),
+	"tungsten": Color(0.4, 0.42, 0.5, 0.6),
+	"titanium": Color(0.6, 0.65, 0.7, 0.6),
+	"copper": Color(0.85, 0.5, 0.25, 0.6),
+	"oil": Color(0.15, 0.15, 0.15, 0.6),
+}
+const RESOURCE_OIL_COLOR := Color(0.15, 0.15, 0.15, 0.6)
+
 const SEASON_NAMES := ["Spring", "Summer", "Autumn", "Winter"]
 var current_season: int = 1  # Summer default
 
@@ -1502,6 +1513,7 @@ func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
 	var in_tree_cluster := cluster < 0.10
 	var in_mountain_cluster := cluster > 0.88 and cluster < 0.95
 	var in_rock_cluster := cluster > 0.62 and cluster < 0.67
+	var used_subs: Array[int] = []
 	for sub_idx in 7:
 		if _is_sub_hex_water(hex, sub_idx) or _count_sub_hex_water_neighbors(hex, sub_idx) > 0:
 			continue
@@ -1520,10 +1532,20 @@ func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
 			resource_type = "mountain"
 			model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
 		elif (cell.biome == BIOME_DIRT or cell.biome == BIOME_GRASS or cell.biome == BIOME_STONE) and ((in_rock_cluster and density3 > 0.45) or (not in_rock_cluster and density3 > 0.94)):
-			resource_type = "rock"
-			model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+			var mineral_roll := _resource_noise(h + 500.0)
+			if mineral_roll > 0.6:
+				var mineral_idx := int(_resource_noise(h + 700.0) * MINERAL_TYPES.size()) % MINERAL_TYPES.size()
+				resource_type = MINERAL_TYPES[mineral_idx]
+			else:
+				resource_type = "rock"
+				model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
 		if not resource_type.is_empty():
 			resources.append({"sub_idx": sub_idx, "type": resource_type, "model": model_path})
+			used_subs.append(sub_idx)
+		elif sub_idx >= 1 and used_subs.size() < 7:
+			var oil_roll := _resource_noise(h + 2000.0)
+			if oil_roll > 0.92 and not _is_sub_hex_water(hex, sub_idx):
+				resources.append({"sub_idx": sub_idx, "type": "oil", "model": ""})
 	return resources
 
 
@@ -1636,6 +1658,8 @@ func _rebuild_decorations() -> void:
 			base_height = _get_cell_height(cell)
 		for res in resource_cache[hex]:
 			var model_path: String = res["model"]
+			if model_path.is_empty():
+				continue
 			var sub_idx: int = res["sub_idx"]
 			if not model_data.has(model_path):
 				model_data[model_path] = []
@@ -1699,10 +1723,13 @@ func _get_resource_counts(hex: Vector3i) -> Dictionary:
 
 
 func _get_resource_color(rtype: String) -> Color:
+	if MINERAL_COLORS.has(rtype):
+		return MINERAL_COLORS[rtype]
 	match rtype:
 		"tree": return RESOURCE_TREE_COLOR
 		"mountain": return RESOURCE_MOUNTAIN_COLOR
 		"rock": return RESOURCE_ROCK_COLOR
+		"oil": return RESOURCE_OIL_COLOR
 	return Color.WHITE
 
 
@@ -2509,19 +2536,26 @@ func _rebuild_smooth_terrain() -> void:
 		min_z = minf(min_z, hpos.z - HEX_SIZE)
 		max_z = maxf(max_z, hpos.z + HEX_SIZE)
 
-	var step := HEX_SIZE * 0.3
+	var step_grid := HEX_SIZE * 0.3
+	var elev_step: float = ELEVATION_STEPS[elevation_step_idx]
+	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
-	var cols := int(ceilf((max_x - min_x) / step)) + 1
-	var rows := int(ceilf((max_z - min_z) / step)) + 1
+	var cols := int(ceilf((max_x - min_x) / step_grid)) + 1
+	var rows := int(ceilf((max_z - min_z) / step_grid)) + 1
 
 	for iz in rows:
 		for ix in cols:
-			var wx: float = min_x + float(ix) * step
-			var wz: float = min_z + float(iz) * step
-			var height := chunk_manager.sample_height(Vector3(wx, 0.0, wz))
+			var wx: float = min_x + float(ix) * step_grid
+			var wz: float = min_z + float(iz) * step_grid
+			var raw_height := chunk_manager.sample_height(Vector3(wx, 0.0, wz))
 			var biome := chunk_manager.sample_biome(Vector3(wx, 0.0, wz))
+			var height: float
+			if biome <= ChunkManager.BIOME_WATER or elev_step <= 0.0:
+				height = raw_height
+			else:
+				height = snappedf(raw_height, elev_step)
 			var col: Color = ChunkManager.BIOME_COLORS[clampi(biome, 0, ChunkManager.BIOME_COLORS.size() - 1)]
 			st.set_color(col)
 			st.set_uv(Vector2(float(ix) / float(cols - 1), float(iz) / float(rows - 1)))
@@ -2627,7 +2661,11 @@ func _rebuild_overlay_mesh() -> void:
 				continue
 			var cell: HexCellData = cells[hex]
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			var height := _get_cell_height(cell) + 0.04
+			var height: float
+			if show_smooth_terrain:
+				height = chunk_manager.sample_height(Vector3(hpos.x, 0.0, hpos.z)) + 0.04
+			else:
+				height = _get_cell_height(cell) + 0.04
 			for res in resource_cache[hex]:
 				var local := _get_sub_hex_local_pos(hex, res["sub_idx"])
 				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
