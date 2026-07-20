@@ -373,7 +373,7 @@ func _cycle_hex_render_mode() -> void:
 func _apply_hex_render_mode() -> void:
 	match hex_render_mode:
 		0:
-			_hex_mat.cull_mode = BaseMaterial3D.CULL_BACK
+			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 		1:
 			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
