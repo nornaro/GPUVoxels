@@ -41,8 +41,8 @@ var BIOME_COLORS: Array[Color] = [
 const WATER_LEVEL: float = -0.3
 const LAKE_LEVEL: float = -0.2
 
-const ELEVATION_STEPS: Array[float] = [2.0, 1.0, 0.5, 0.25, 0.1, 0.0]
-const ELEVATION_STEP_NAMES: Array[String] = ["Step 2m", "Step 1m", "Step 50cm", "Step 25cm", "Step 10cm", "Flat"]
+const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.01, 0.001, 0.0]
+const ELEVATION_STEP_NAMES: Array[String] = ["Full", "1/10", "1/100", "1/1000", "Flat"]
 var elevation_step_idx: int = 0
 
 var cells: Dictionary = {}
@@ -1225,11 +1225,8 @@ func _get_cell_height(cell: HexCellData) -> float:
 	if _is_water_biome(cell.biome):
 		return WATER_HEIGHT
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
-	if step <= 0.0:
-		return HEX_SIZE
 	var e := maxf(cell.elevation, 0.0)
-	var height := e * hex_width + HEX_SIZE
-	return snappedf(height, step)
+	return e * hex_width * step + HEX_SIZE
 
 
 # ============================================================================
@@ -1720,10 +1717,8 @@ func _rebuild_decorations() -> void:
 			var elev_step: float = ELEVATION_STEPS[elevation_step_idx]
 			if s_biome <= ChunkManager.BIOME_WATER:
 				base_height = s_raw
-			elif elev_step <= 0.0:
-				base_height = HEX_SIZE
 			else:
-				base_height = snappedf(s_raw, elev_step)
+				base_height = (s_raw - HEX_SIZE) * elev_step + HEX_SIZE
 		else:
 			base_height = _get_cell_height(cell)
 		for res in resource_cache[hex]:
@@ -2638,10 +2633,8 @@ func _rebuild_smooth_terrain() -> void:
 			var height: float
 			if biome <= ChunkManager.BIOME_WATER:
 				height = raw_height
-			elif elev_step <= 0.0:
-				height = HEX_SIZE
 			else:
-				height = snappedf(raw_height, elev_step)
+				height = (raw_height - HEX_SIZE) * elev_step + HEX_SIZE
 			var col: Color = ChunkManager.BIOME_COLORS[clampi(biome, 0, ChunkManager.BIOME_COLORS.size() - 1)]
 			st.set_color(col)
 			st.set_uv(Vector2(float(ix) / float(cols - 1), float(iz) / float(rows - 1)))
