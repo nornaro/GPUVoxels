@@ -41,8 +41,8 @@ var BIOME_COLORS: Array[Color] = [
 const WATER_LEVEL: float = -0.3
 const LAKE_LEVEL: float = -0.2
 
-const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.01, 0.0]
-const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Step 0.01", "Flat"]
+const ELEVATION_STEPS: Array[float] = [2.0, 1.0, 0.5, 0.25, 0.1, 0.0]
+const ELEVATION_STEP_NAMES: Array[String] = ["Step 2m", "Step 1m", "Step 50cm", "Step 25cm", "Step 10cm", "Flat"]
 var elevation_step_idx: int = 0
 
 var cells: Dictionary = {}
