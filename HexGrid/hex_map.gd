@@ -462,6 +462,7 @@ func _toggle_smooth_terrain() -> void:
 	smooth_terrain_instance.visible = show_smooth_terrain
 	if show_smooth_terrain:
 		_rebuild_smooth_terrain()
+	_rebuild_water_mesh()
 	_needs_decoration_rebuild = true
 	_needs_overlay_rebuild = true
 	_tool_flash("Smooth Terrain" if show_smooth_terrain else "Hex Terrain")
@@ -2817,26 +2818,61 @@ func _rebuild_water_mesh() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var up := Vector3.UP
-	var seen: Dictionary = {}
-	for hex in water_hexes:
-		if seen.has(hex):
-			continue
-		seen[hex] = true
-		var water_h: float = _water_body_heights.get(hex, WATER_HEIGHT) - 0.01
-		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var center := Vector3(hpos.x, water_h, hpos.z)
-		var r := HEX_SIZE * 1.05
-		for i in 6:
-			var a1 := deg_to_rad(60.0 * float(i))
-			var a2 := deg_to_rad(60.0 * float((i + 1) % 6))
-			var v1 := center + Vector3(cos(a1), 0.0, sin(a1)) * r
-			var v2 := center + Vector3(cos(a2), 0.0, sin(a2)) * r
-			st.set_normal(up)
-			st.add_vertex(center)
-			st.set_normal(up)
-			st.add_vertex(v1)
-			st.set_normal(up)
-			st.add_vertex(v2)
+
+	if show_smooth_terrain:
+		var min_x := INF
+		var max_x := -INF
+		var min_z := INF
+		var max_z := -INF
+		for hex in water_hexes:
+			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+			min_x = minf(min_x, hpos.x - HEX_SIZE * 1.2)
+			max_x = maxf(max_x, hpos.x + HEX_SIZE * 1.2)
+			min_z = minf(min_z, hpos.z - HEX_SIZE * 1.2)
+			max_z = maxf(max_z, hpos.z + HEX_SIZE * 1.2)
+		var step_grid := HEX_SIZE * 0.3
+		var cols := int(ceilf((max_x - min_x) / step_grid)) + 1
+		var rows := int(ceilf((max_z - min_z) / step_grid)) + 1
+		var water_h: float = _water_body_heights.get(water_hexes[0], WATER_HEIGHT) - 0.01
+		for iz in rows:
+			for ix in cols:
+				var wx: float = min_x + float(ix) * step_grid
+				var wz: float = min_z + float(iz) * step_grid
+				st.set_normal(up)
+				st.add_vertex(Vector3(wx, water_h, wz))
+		for iz in rows - 1:
+			for ix in cols - 1:
+				var i0: int = iz * cols + ix
+				var i1: int = i0 + 1
+				var i2: int = i0 + cols
+				var i3: int = i2 + 1
+				st.add_index(i0)
+				st.add_index(i2)
+				st.add_index(i1)
+				st.add_index(i1)
+				st.add_index(i2)
+				st.add_index(i3)
+	else:
+		var seen: Dictionary = {}
+		for hex in water_hexes:
+			if seen.has(hex):
+				continue
+			seen[hex] = true
+			var water_h: float = _water_body_heights.get(hex, WATER_HEIGHT) - 0.01
+			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+			var center := Vector3(hpos.x, water_h, hpos.z)
+			var r := HEX_SIZE * 1.05
+			for i in 6:
+				var a1 := deg_to_rad(60.0 * float(i))
+				var a2 := deg_to_rad(60.0 * float((i + 1) % 6))
+				var v1 := center + Vector3(cos(a1), 0.0, sin(a1)) * r
+				var v2 := center + Vector3(cos(a2), 0.0, sin(a2)) * r
+				st.set_normal(up)
+				st.add_vertex(center)
+				st.set_normal(up)
+				st.add_vertex(v1)
+				st.set_normal(up)
+				st.add_vertex(v2)
 	_water_mesh_instance.mesh = st.commit()
 	_water_mesh_instance.visible = true
 
