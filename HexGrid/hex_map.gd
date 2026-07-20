@@ -1629,7 +1629,11 @@ func _rebuild_decorations() -> void:
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell)
+		var base_height: float
+		if show_smooth_terrain:
+			base_height = chunk_manager.sample_height(Vector3(hpos.x, 0.0, hpos.z))
+		else:
+			base_height = _get_cell_height(cell)
 		for res in resource_cache[hex]:
 			var model_path: String = res["model"]
 			var sub_idx: int = res["sub_idx"]
@@ -1656,7 +1660,7 @@ func _rebuild_decorations() -> void:
 			var rotated_center := basis * center_xz
 			var origin := Vector3(
 				hpos.x + local.x - rotated_center.x,
-				height - height_scl * aabb.position.y,
+				base_height - height_scl * aabb.position.y,
 				hpos.z + local.y - rotated_center.z
 			)
 			model_data[model_path].append(Transform3D(basis, origin))
