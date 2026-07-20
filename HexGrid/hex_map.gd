@@ -64,9 +64,9 @@ var vertex_subs: Dictionary = {}
 ## Toggle elevation shading (Insert key). Colors hexes by elevation value.
 @export var show_elevation_shade: bool = false
 
-## Hex render mode: 0=shaded+sides, 1=flat+sides, 2=top-only flat.
+## Hex render mode: 0=per-pixel shaded, 1=per-vertex simple 3D, 2=unshaded flat.
 var hex_render_mode: int = 0
-const HEX_RENDER_MODE_NAMES := ["Shaded+Sides", "Flat+Sides", "Top-Only"]
+const HEX_RENDER_MODE_NAMES := ["Shaded", "Simple 3D", "Flat"]
 
 ## Current tool: 0=Navigate, 1=River, 2=Road, 3=Place, 4=Raise, 5=Flatten, 6=Level, 7=WaterFlow. Keys 1-8.
 @export_range(0, 7) var tool_mode: int = 0:
@@ -378,10 +378,10 @@ func _apply_hex_render_mode() -> void:
 			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 		1:
 			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 		2:
 			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
 
 func _setup_bottom_palette(canvas: CanvasLayer) -> void:
