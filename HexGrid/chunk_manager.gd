@@ -340,9 +340,9 @@ func sample_height(world_pos: Vector3) -> float:
 	var r: float = (-0.33333333333 * world_pos.x + 0.57735026919 * world_pos.z) / HEX_SIZE
 	var nval: float = _noise.get_noise_2d(q, r)
 	var biome: int = _classify_biome(nval)
+	if biome == BIOME_DEEP_WATER or biome == BIOME_WATER:
+		return 0.3
 	var elevation: float = _remap_elevation(biome, nval)
-	if biome <= BIOME_WATER:
-		return HEX_SIZE
 	var hex_width: float = HEX_SIZE * 1.73205080757
 	return maxf(elevation, 0.0) * hex_width + HEX_SIZE
 

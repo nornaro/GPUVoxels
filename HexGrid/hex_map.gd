@@ -444,6 +444,8 @@ func _toggle_smooth_terrain() -> void:
 	smooth_terrain_instance.visible = show_smooth_terrain
 	if show_smooth_terrain:
 		_rebuild_smooth_terrain()
+	_needs_decoration_rebuild = true
+	_needs_overlay_rebuild = true
 	_tool_flash("Smooth Terrain" if show_smooth_terrain else "Hex Terrain")
 
 
