@@ -380,8 +380,8 @@ func _apply_hex_render_mode() -> void:
 			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		2:
-			_hex_mat.cull_mode = BaseMaterial3D.CULL_BACK
-			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 
 
 func _setup_bottom_palette(canvas: CanvasLayer) -> void:
