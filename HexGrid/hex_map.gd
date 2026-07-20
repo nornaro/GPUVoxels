@@ -333,6 +333,10 @@ var _bottom_palette: PanelContainer
 var _palette_tabs: TabContainer
 var _palette_grids: Dictionary = {}
 var _tool_buttons: Array[Button] = []
+var _elev_btn: Button
+var _season_btn: Button
+var _hex_mode_btn: Button
+var _smooth_btn: Button
 
 
 func _setup_top_toolbar(canvas: CanvasLayer) -> void:
@@ -351,6 +355,29 @@ func _setup_top_toolbar(canvas: CanvasLayer) -> void:
 	_top_toolbar.add_theme_constant_override("separation", 4)
 	panel.add_child(_top_toolbar)
 
+	# LEFT: Save / Load / Regen
+	var save_btn := Button.new()
+	save_btn.text = "Save [F8]"
+	save_btn.custom_minimum_size = Vector2(70, 26)
+	save_btn.pressed.connect(_quick_save)
+	_top_toolbar.add_child(save_btn)
+
+	var load_btn := Button.new()
+	load_btn.text = "Load [F9]"
+	load_btn.custom_minimum_size = Vector2(70, 26)
+	load_btn.pressed.connect(_quick_load)
+	_top_toolbar.add_child(load_btn)
+
+	var regen_btn := Button.new()
+	regen_btn.text = "Regen [R]"
+	regen_btn.custom_minimum_size = Vector2(70, 26)
+	regen_btn.pressed.connect(_regenerate_map)
+	_top_toolbar.add_child(regen_btn)
+
+	var sep1 := VSeparator.new()
+	_top_toolbar.add_child(sep1)
+
+	# MIDDLE: Terrain edit tools
 	var tool_defs := [
 		["Nav", 0, "1"],
 		["River", 1, "2"],
@@ -369,14 +396,56 @@ func _setup_top_toolbar(canvas: CanvasLayer) -> void:
 		_top_toolbar.add_child(btn)
 		_tool_buttons.append(btn)
 
-	var sep := VSeparator.new()
-	_top_toolbar.add_child(sep)
-	var hex_mode_btn := Button.new()
-	hex_mode_btn.text = "Hex [T]"
-	hex_mode_btn.custom_minimum_size = Vector2(80, 26)
-	hex_mode_btn.pressed.connect(_cycle_hex_render_mode)
-	_top_toolbar.add_child(hex_mode_btn)
-	_hex_render_mode_btn = hex_mode_btn
+	var sep2 := VSeparator.new()
+	_top_toolbar.add_child(sep2)
+
+	# RIGHT: Terrain settings
+	_elev_btn = Button.new()
+	_elev_btn.text = "Elev [F]"
+	_elev_btn.custom_minimum_size = Vector2(70, 26)
+	_elev_btn.pressed.connect(_cycle_elevation_step)
+	_top_toolbar.add_child(_elev_btn)
+
+	_season_btn = Button.new()
+	_season_btn.text = "Season [N]"
+	_season_btn.custom_minimum_size = Vector2(80, 26)
+	_season_btn.pressed.connect(_cycle_season)
+	_top_toolbar.add_child(_season_btn)
+
+	_hex_mode_btn = Button.new()
+	_hex_mode_btn.text = "Hex [T]"
+	_hex_mode_btn.custom_minimum_size = Vector2(70, 26)
+	_hex_mode_btn.pressed.connect(_cycle_hex_render_mode)
+	_top_toolbar.add_child(_hex_mode_btn)
+
+	_smooth_btn = Button.new()
+	_smooth_btn.text = "Smooth [B]"
+	_smooth_btn.custom_minimum_size = Vector2(80, 26)
+	_smooth_btn.pressed.connect(_toggle_smooth_terrain)
+	_top_toolbar.add_child(_smooth_btn)
+
+
+func _cycle_elevation_step() -> void:
+	elevation_step_idx = (elevation_step_idx + 1) % ELEVATION_STEPS.size()
+	elevation_step = ELEVATION_STEPS[elevation_step_idx]
+	_needs_rebuild = true
+	_needs_decoration_rebuild = true
+	_tool_flash("Elevation: " + ELEVATION_STEP_NAMES[elevation_step_idx])
+
+
+func _cycle_season() -> void:
+	current_season = (current_season + 1) % SEASON_NAMES.size()
+	_update_tree_materials()
+	_tool_flash("Season: " + SEASON_NAMES[current_season])
+
+
+func _toggle_smooth_terrain() -> void:
+	show_smooth_terrain = not show_smooth_terrain
+	hex_multimesh_instance.visible = not show_smooth_terrain
+	smooth_terrain_instance.visible = show_smooth_terrain
+	if show_smooth_terrain:
+		_rebuild_smooth_terrain()
+	_tool_flash("Smooth Terrain" if show_smooth_terrain else "Hex Terrain")
 
 
 func _on_tool_button(mode: int) -> void:
@@ -990,24 +1059,13 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_R:
 			_regenerate_map()
 		KEY_F:
-			elevation_step_idx = (elevation_step_idx + 1) % ELEVATION_STEPS.size()
-			elevation_step = ELEVATION_STEPS[elevation_step_idx]
-			_needs_rebuild = true
-			_needs_decoration_rebuild = true
-			_tool_flash("Elevation: " + ELEVATION_STEP_NAMES[elevation_step_idx])
+			_cycle_elevation_step()
 		KEY_N:
-			current_season = (current_season + 1) % SEASON_NAMES.size()
-			_update_tree_materials()
-			_tool_flash("Season: " + SEASON_NAMES[current_season])
+			_cycle_season()
 		KEY_T:
 			_cycle_hex_render_mode()
 		KEY_B:
-			show_smooth_terrain = not show_smooth_terrain
-			hex_multimesh_instance.visible = not show_smooth_terrain
-			smooth_terrain_instance.visible = show_smooth_terrain
-			if show_smooth_terrain:
-				_rebuild_smooth_terrain()
-			_tool_flash("Smooth Terrain" if show_smooth_terrain else "Hex Terrain")
+			_toggle_smooth_terrain()
 		KEY_F6:
 			_quick_save()
 		KEY_F7:
