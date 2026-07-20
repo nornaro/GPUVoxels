@@ -905,6 +905,9 @@ func _ensure_draw_cache() -> void:
 	_cached_camera_pitch = camera_pitch
 	_cached_camera_distance = camera_distance
 	_cached_camera_pivot = camera_pivot
+	var prev_chunk_min := _cached_chunk_min
+	var prev_chunk_max := _cached_chunk_max
+	var prev_hex_count := _cached_visible_hexes.size()
 	_cached_visible_hexes = _get_visible_hex_range()
 	_cached_visible_set.clear()
 	for hex in _cached_visible_hexes:
@@ -927,7 +930,10 @@ func _ensure_draw_cache() -> void:
 		var vdata: Dictionary = vertex_subs[key]
 		if vdata["river"] and vdata.has("hex") and _cached_visible_set.has(vdata["hex"]):
 			_cached_visible_vertex_rivers.append(key)
-	_needs_rebuild = true
+	var chunk_range_changed := _cached_chunk_min != prev_chunk_min or _cached_chunk_max != prev_chunk_max
+	var hex_count_changed := _cached_visible_hexes.size() != prev_hex_count
+	if chunk_range_changed or hex_count_changed:
+		_needs_rebuild = true
 
 
 # ============================================================================
@@ -1593,6 +1599,8 @@ func _place_object_on_hex(hex: Vector3i, model_path: String, rot: float = 0.0, s
 	placed_objects[hex] = {"path": model_path, "rotation": rot, "scale": scl}
 	if not ResourceLoader.exists(model_path):
 		return
+	if not _cell_exists(hex):
+		return
 	var scene: PackedScene = load(model_path)
 	if not scene:
 		return
@@ -1650,6 +1658,8 @@ func _update_object_instances() -> void:
 			continue
 		if not _placed_object_instances.has(hex):
 			_place_object_on_hex(hex, model_path, rot, scl)
+			continue
+		if not _cell_exists(hex):
 			continue
 		var cell: HexCellData = cells[hex]
 		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
@@ -1989,6 +1999,10 @@ func _level_at(screen_pos: Vector2) -> void:
 		return
 	if hex == _level_target:
 		return
+	if not _cell_exists(_level_target):
+		_level_target = Vector3i(999999, 999999, -1999998)
+		_tool_flash("Level target lost — set again")
+		return
 	var target_cell: HexCellData = cells[_level_target]
 	var cell: HexCellData = cells[hex]
 	var old_elev := cell.elevation
@@ -2078,6 +2092,8 @@ func _apply_water_flow_on_lower(hex: Vector3i) -> void:
 func _create_block_instance(hex: Vector3i) -> void:
 	if _block_instances.has(hex):
 		return
+	if not _cell_exists(hex):
+		return
 	var cell: HexCellData = cells[hex]
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 	var height := _get_cell_height(cell, hex)
@@ -2114,6 +2130,8 @@ func _rebuild_block_instances() -> void:
 
 func _update_block_instances() -> void:
 	for hex in placed_blocks:
+		if not _cell_exists(hex):
+			continue
 		if not _block_instances.has(hex):
 			_create_block_instance(hex)
 			continue
@@ -2352,6 +2370,8 @@ func _convert_river_to_water(path: Array[Vector3i]) -> void:
 func _flood_fill_basin(start: Vector3i) -> Array[Vector3i]:
 	var MAX_BASIN: int = MIN_LAKE_SIZE * 3
 	var basin: Array[Vector3i] = []
+	if not _cell_exists(start):
+		return basin
 	var queue: Array[Vector3i] = [start]
 	var visited: Dictionary = {start: true}
 	var max_elev: float = cells[start].elevation
@@ -2375,7 +2395,9 @@ func _flood_fill_basin(start: Vector3i) -> Array[Vector3i]:
 
 
 func _flow_river(start: Vector3i) -> Array[Vector3i]:
-	if _cell_exists(start) and _is_water_biome(cells[start].biome):
+	if not _cell_exists(start):
+		return []
+	if _is_water_biome(cells[start].biome):
 		return []
 
 	var path: Array[Vector3i] = [start]
@@ -2429,6 +2451,9 @@ func _flow_river(start: Vector3i) -> Array[Vector3i]:
 
 func _flow_escape_basin(from: Vector3i, global_visited: Dictionary, up_penalty: float) -> Array[Vector3i]:
 	var MAX_ESCAPE: int = 50
+	var result_path: Array[Vector3i] = []
+	if not _cell_exists(from):
+		return result_path
 	var open: Array = []
 	var g_cost: Dictionary = {from: 0.0}
 	var came_from: Dictionary = {}
@@ -2851,37 +2876,38 @@ func _rebuild_water_mesh() -> void:
 					var wf: float = _water_floor_heights.get(nearest_hex, ws - 1.0)
 					depth_val = clampf((ws - wf) / 1.0, 0.0, 1.0)
 				var height := water_h
-				var best_land_dist := INF
-				var best_land_h := 0.0
-				var best_water_h := water_h
-				for nb in HexGridMath.cube_neighbors(nearest_hex):
-					if not _cell_exists(nb):
-						continue
-					var nb_pos := HexGridMath.cube_to_world_flat_top(nb, HEX_SIZE)
-					var nb_dist := wpos2.distance_to(Vector2(nb_pos.x, nb_pos.z))
-					if _is_water_biome(cells[nb].biome):
-						var nwh := _water_body_heights.get(nb, WATER_HEIGHT) - 0.01
-						if nb_dist < best_land_dist:
-							best_water_h = nwh
-					else:
-						var nb_cell: HexCellData = cells[nb]
-						var nb_h := _get_cell_height(nb_cell, nb)
-						if nb_dist < best_land_dist:
-							best_land_dist = nb_dist
-							best_land_h = nb_h
-				var blend_radius := HEX_SIZE * 1.1
-				if best_land_dist < blend_radius:
-					var t := clampf(best_land_dist / blend_radius, 0.0, 1.0)
-					height = lerpf(best_land_h, best_water_h, t)
-					depth_val = minf(depth_val, 1.0 - t * t)
-				elif is_water:
-					height = water_h
-				else:
+				if is_water:
+					var best_land_dist := INF
+					var best_land_h := 0.0
+					var best_water_h := water_h
+					for nb in HexGridMath.cube_neighbors(nearest_hex):
+						if not _cell_exists(nb):
+							continue
+						var nb_pos := HexGridMath.cube_to_world_flat_top(nb, HEX_SIZE)
+						var nb_dist := wpos2.distance_to(Vector2(nb_pos.x, nb_pos.z))
+						if _is_water_biome(cells[nb].biome):
+							var nwh: float = _water_body_heights.get(nb, WATER_HEIGHT) - 0.01
+							if nb_dist < best_land_dist:
+								best_water_h = nwh
+						else:
+							var nb_cell: HexCellData = cells[nb]
+							var nb_h := _get_cell_height(nb_cell, nb)
+							if nb_dist < best_land_dist:
+								best_land_dist = nb_dist
+								best_land_h = nb_h
+					var blend_radius := HEX_SIZE * 1.1
+					if best_land_dist < blend_radius:
+						var t := clampf(best_land_dist / blend_radius, 0.0, 1.0)
+						height = lerpf(best_land_h, best_water_h, t)
+						depth_val = minf(depth_val, 1.0 - t * t)
+				elif _cell_exists(nearest_hex):
 					var nc: HexCellData = cells[nearest_hex]
 					height = _get_cell_height(nc, nearest_hex)
 					depth_val = 0.0
+				else:
+					height = water_h
 				st.set_normal(up)
-				st.set_color(Color(depth_val, 0.0, 0.0))
+				st.set_color(Color(depth_val, 1.0 if is_water else 0.0, 0.0))
 				st.add_vertex(Vector3(wx, height, wz))
 		for iz in rows - 1:
 			for ix in cols - 1:
@@ -2907,8 +2933,8 @@ func _rebuild_water_mesh() -> void:
 			var depth_val: float = clampf((ws - wf) / 1.0, 0.0, 1.0)
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 			var center := Vector3(hpos.x, water_h, hpos.z)
-			var r := HEX_SIZE * 1.05
-			var dcol := Color(depth_val, 0.0, 0.0)
+			var r := HEX_SIZE
+			var dcol := Color(depth_val, 1.0, 0.0)
 			for i in 6:
 				var a1 := deg_to_rad(60.0 * float(i))
 				var a2 := deg_to_rad(60.0 * float((i + 1) % 6))
