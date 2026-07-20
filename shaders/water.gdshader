@@ -1,8 +1,8 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
-uniform vec4 shallow_color : source_color = vec4(0.2, 0.5, 0.7, 0.82);
-uniform vec4 deep_color : source_color = vec4(0.04, 0.15, 0.35, 0.95);
+uniform vec4 shallow_color : source_color = vec4(0.3, 0.65, 0.85, 0.45);
+uniform vec4 deep_color : source_color = vec4(0.05, 0.2, 0.45, 0.88);
 uniform float wave_speed : hint_range(0.0, 3.0) = 0.5;
 uniform float wave_strength : hint_range(0.0, 0.05) = 0.006;
 
@@ -50,23 +50,24 @@ void fragment() {
 	vec3 N = normalize(v_normal_interp);
 	vec3 V = normalize(CAMERA_POSITION_WORLD - v_world_pos);
 
-	float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.0);
-	fresnel = clamp(fresnel, 0.0, 1.0);
+	float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	fresnel = clamp(fresnel, 0.0, 0.8);
 
-	ALBEDO = mix(deep_color.rgb, shallow_color.rgb, 0.45 + fresnel * 0.55);
-	ALPHA = 1.0;
+	float depth = COLOR.r;
+
+	ALBEDO = mix(shallow_color.rgb, deep_color.rgb, depth);
+	ALBEDO += fresnel * vec3(0.2, 0.3, 0.4);
+	ALPHA = mix(shallow_color.a, deep_color.a, depth);
 
 	float t = TIME;
-
 	float shimmer1 = noise(v_world_pos.xz * 12.0 + t * 0.8);
 	float shimmer2 = noise(v_world_pos.xz * 24.0 - t * 1.2);
 	float shimmer3 = noise(v_world_pos.xz * 6.0 + t * 0.3);
 	float shimmer = shimmer1 * 0.5 + shimmer2 * 0.3 + shimmer3 * 0.2;
-	shimmer = pow(shimmer, 3.0);
+	shimmer = pow(shimmer, 4.0);
+	ALBEDO += vec3(0.2, 0.25, 0.3) * shimmer * (0.5 + fresnel * 0.5);
 
-	ALBEDO += vec3(0.15, 0.2, 0.25) * shimmer * (0.6 + fresnel * 0.4);
-
-	METALLIC = 0.3;
-	ROUGHNESS = 0.05;
-	SPECULAR = 0.9;
+	METALLIC = 0.15;
+	ROUGHNESS = 0.15;
+	SPECULAR = 0.7;
 }

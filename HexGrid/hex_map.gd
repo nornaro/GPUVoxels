@@ -2842,10 +2842,15 @@ func _rebuild_water_mesh() -> void:
 				var wpos := Vector3(wx, 0.0, wz)
 				var nearest_hex := HexGridMath.world_to_cube_flat_top(wpos, HEX_SIZE)
 				var water_h: float = WATER_HEIGHT - 0.01
+				var depth_val: float = 1.0
 				if _cell_exists(nearest_hex) and _is_water_biome(cells[nearest_hex].biome):
 					water_h = _water_body_heights.get(nearest_hex, WATER_HEIGHT) - 0.01
+					var ws: float = _water_body_heights.get(nearest_hex, WATER_HEIGHT)
+					var wf: float = _water_floor_heights.get(nearest_hex, ws - 1.0)
+					depth_val = clampf((ws - wf) / 1.0, 0.0, 1.0)
 				var wpos2 := Vector2(wx, wz)
 				var height := water_h
+				var near_shore := false
 				for nb in HexGridMath.cube_neighbors(nearest_hex):
 					if _cell_exists(nb) and not _is_water_biome(cells[nb].biome):
 						var nb_cell: HexCellData = cells[nb]
@@ -2856,8 +2861,11 @@ func _rebuild_water_mesh() -> void:
 						if nb_dist < blend_radius:
 							var t := clampf(nb_dist / blend_radius, 0.0, 1.0)
 							height = lerpf(nb_h, water_h, t)
+							depth_val = minf(depth_val, 1.0 - t)
+							near_shore = true
 							break
 				st.set_normal(up)
+				st.set_color(Color(depth_val, 0.0, 0.0))
 				st.add_vertex(Vector3(wx, height, wz))
 		for iz in rows - 1:
 			for ix in cols - 1:
@@ -2878,19 +2886,26 @@ func _rebuild_water_mesh() -> void:
 				continue
 			seen[hex] = true
 			var water_h: float = _water_body_heights.get(hex, WATER_HEIGHT) - 0.01
+			var ws: float = _water_body_heights.get(hex, WATER_HEIGHT)
+			var wf: float = _water_floor_heights.get(hex, ws - 1.0)
+			var depth_val: float = clampf((ws - wf) / 1.0, 0.0, 1.0)
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 			var center := Vector3(hpos.x, water_h, hpos.z)
 			var r := HEX_SIZE * 1.05
+			var dcol := Color(depth_val, 0.0, 0.0)
 			for i in 6:
 				var a1 := deg_to_rad(60.0 * float(i))
 				var a2 := deg_to_rad(60.0 * float((i + 1) % 6))
 				var v1 := center + Vector3(cos(a1), 0.0, sin(a1)) * r
 				var v2 := center + Vector3(cos(a2), 0.0, sin(a2)) * r
 				st.set_normal(up)
+				st.set_color(dcol)
 				st.add_vertex(center)
 				st.set_normal(up)
+				st.set_color(dcol)
 				st.add_vertex(v1)
 				st.set_normal(up)
+				st.set_color(dcol)
 				st.add_vertex(v2)
 	_water_mesh_instance.mesh = st.commit()
 	_water_mesh_instance.visible = true
