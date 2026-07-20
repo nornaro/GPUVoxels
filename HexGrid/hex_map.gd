@@ -157,6 +157,7 @@ var _block_instances: Dictionary = {}
 var _needs_rebuild: bool = true
 var _needs_decoration_rebuild: bool = false
 var _needs_overlay_rebuild: bool = true
+var _water_body_heights: Dictionary = {}
 
 var _cached_camera_yaw: float = NAN
 var _cached_camera_pitch: float = NAN
@@ -471,9 +472,9 @@ func _apply_hex_render_mode() -> void:
 			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 		1:
 			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		2:
-			_hex_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			_hex_mat.cull_mode = BaseMaterial3D.CULL_BACK
 			_hex_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
 
@@ -700,6 +701,7 @@ func _process(delta: float) -> void:
 		_update_hover_info()
 
 	if _needs_rebuild:
+		_build_water_body_heights()
 		_rebuild_hex_multimesh()
 		_rebuild_overlay_mesh()
 		_rebuild_grid_lines()
@@ -1220,26 +1222,40 @@ func _elevation_to_color(e: float) -> Color:
 	return Color(t, t, t, 0.4)
 
 
-func _get_water_height_for_hex(hex: Vector3i) -> float:
-	var min_land := INF
-	for nb in HexGridMath.cube_neighbors(hex):
-		if _cell_exists(nb):
-			var nc: HexCellData = cells[nb]
-			if not _is_water_biome(nc.biome):
-				var ne := maxf(nc.elevation, 0.0)
-				var h := ne * HEX_SIZE * HexGridMath.SQRT3 * ELEVATION_STEPS[elevation_step_idx] + HEX_SIZE
-				if h < min_land:
-					min_land = h
-	if min_land < INF:
-		return min_land - 0.2
-	return WATER_HEIGHT
+func _build_water_body_heights() -> void:
+	_water_body_heights.clear()
+	for hex in cells:
+		if not _is_water_biome(cells[hex].biome) or _water_body_heights.has(hex):
+			continue
+		var body: Array[Vector3i] = []
+		var queue: Array[Vector3i] = [hex]
+		var visited: Dictionary = {hex: true}
+		var min_land_height := INF
+		while not queue.is_empty():
+			var cur: Vector3i = queue.pop_back()
+			body.append(cur)
+			for nb in HexGridMath.cube_neighbors(cur):
+				if visited.has(nb) or not _cell_exists(nb):
+					continue
+				visited[nb] = true
+				var nc: HexCellData = cells[nb]
+				if _is_water_biome(nc.biome):
+					queue.append(nb)
+				else:
+					var ne := maxf(nc.elevation, 0.0)
+					var h := ne * HEX_SIZE * HexGridMath.SQRT3 * ELEVATION_STEPS[elevation_step_idx] + HEX_SIZE
+					if h < min_land_height:
+						min_land_height = h
+		var water_h: float = (min_land_height - 0.2) if min_land_height < INF else WATER_HEIGHT
+		for w in body:
+			_water_body_heights[w] = water_h
 
 
 func _get_cell_height(cell: HexCellData, hex := Vector3i.ZERO) -> float:
 	var step: float = ELEVATION_STEPS[elevation_step_idx]
 	if _is_water_biome(cell.biome):
-		if hex != Vector3i.ZERO:
-			return _get_water_height_for_hex(hex)
+		if _water_body_heights.has(hex):
+			return _water_body_heights[hex]
 		return WATER_HEIGHT
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
 	var e := maxf(cell.elevation, 0.0)
@@ -2650,15 +2666,10 @@ func _rebuild_smooth_terrain() -> void:
 			var height: float
 			if biome <= ChunkManager.BIOME_WATER:
 				var nearest_hex := HexGridMath.world_to_cube_flat_top(Vector3(wx, 0.0, wz), HEX_SIZE)
-				var min_land := INF
-				for nb in HexGridMath.cube_neighbors(nearest_hex):
-					if _cell_exists(nb):
-						var nc: HexCellData = cells[nb]
-						if not _is_water_biome(nc.biome):
-							var nh := _get_cell_height(nc, nb)
-							if nh < min_land:
-								min_land = nh
-				height = (min_land - 0.2) if min_land < INF else raw_height
+				if _water_body_heights.has(nearest_hex):
+					height = _water_body_heights[nearest_hex]
+				else:
+					height = raw_height
 			else:
 				height = (raw_height - HEX_SIZE) * elev_step + HEX_SIZE
 			var col: Color = ChunkManager.BIOME_COLORS[clampi(biome, 0, ChunkManager.BIOME_COLORS.size() - 1)]
