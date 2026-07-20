@@ -331,3 +331,26 @@ func _remap_elevation(biome: int, nval: float) -> float:
 			return remap(nval, 0.7, 1.4, 2.2, 4.0)
 		_:
 			return remap(nval, -1.0, 1.0, 0.3, 3.0)
+
+
+func sample_height(world_pos: Vector3) -> float:
+	if not is_initialized():
+		return HEX_SIZE
+	var q: float = 0.66666666667 * world_pos.x / HEX_SIZE
+	var r: float = (-0.33333333333 * world_pos.x + 0.57735026919 * world_pos.z) / HEX_SIZE
+	var nval: float = _noise.get_noise_2d(q, r)
+	var biome: int = _classify_biome(nval)
+	var elevation: float = _remap_elevation(biome, nval)
+	if biome <= BIOME_WATER:
+		return HEX_SIZE
+	var hex_width: float = HEX_SIZE * 1.73205080757
+	return maxf(elevation, 0.0) * hex_width + HEX_SIZE
+
+
+func sample_biome(world_pos: Vector3) -> int:
+	if not is_initialized():
+		return BIOME_GRASS
+	var q: float = 0.66666666667 * world_pos.x / HEX_SIZE
+	var r: float = (-0.33333333333 * world_pos.x + 0.57735026919 * world_pos.z) / HEX_SIZE
+	var nval: float = _noise.get_noise_2d(q, r)
+	return _classify_biome(nval)

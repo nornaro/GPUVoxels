@@ -68,6 +68,9 @@ var vertex_subs: Dictionary = {}
 var hex_render_mode: int = 0
 const HEX_RENDER_MODE_NAMES := ["Shaded", "Simple 3D", "Flat"]
 
+## Toggle smooth terrain (B key). Shows continuous curvy terrain instead of hexes.
+var show_smooth_terrain: bool = false
+
 ## Current tool: 0=Navigate, 1=River, 2=Road, 3=Place, 4=Raise, 5=Flatten, 6=Level, 7=WaterFlow. Keys 1-8.
 @export_range(0, 7) var tool_mode: int = 0:
 	set(v):
@@ -141,6 +144,7 @@ var _hex_mat: StandardMaterial3D
 var _hex_render_mode_btn: Button
 var overlay_mesh_instance: MeshInstance3D
 var grid_lines_mesh_instance: MeshInstance3D
+var smooth_terrain_instance: MeshInstance3D
 
 var camera_yaw: float = 45.0
 var camera_pitch: float = -55.0
@@ -256,6 +260,14 @@ func _setup_3d() -> void:
 	grid_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	grid_lines_mesh_instance.material_override = grid_mat
 	add_child(grid_lines_mesh_instance)
+
+	smooth_terrain_instance = MeshInstance3D.new()
+	var smooth_mat := StandardMaterial3D.new()
+	smooth_mat.vertex_color_use_as_albedo = true
+	smooth_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	smooth_terrain_instance.material_override = smooth_mat
+	smooth_terrain_instance.visible = false
+	add_child(smooth_terrain_instance)
 
 	_blocks_container = Node3D.new()
 	add_child(_blocks_container)
@@ -612,6 +624,8 @@ func _process(delta: float) -> void:
 		_rebuild_grid_lines()
 		_update_block_instances()
 		_update_object_instances()
+		if show_smooth_terrain:
+			_rebuild_smooth_terrain()
 		_needs_rebuild = false
 		_needs_overlay_rebuild = false
 	elif _needs_overlay_rebuild:
@@ -976,6 +990,13 @@ func _handle_key(event: InputEventKey) -> void:
 			_tool_flash("Season: " + SEASON_NAMES[current_season])
 		KEY_T:
 			_cycle_hex_render_mode()
+		KEY_B:
+			show_smooth_terrain = not show_smooth_terrain
+			hex_multimesh_instance.visible = not show_smooth_terrain
+			smooth_terrain_instance.visible = show_smooth_terrain
+			if show_smooth_terrain:
+				_rebuild_smooth_terrain()
+			_tool_flash("Smooth Terrain" if show_smooth_terrain else "Hex Terrain")
 		KEY_F6:
 			_quick_save()
 		KEY_F7:
@@ -2461,6 +2482,62 @@ func _rebuild_hex_multimesh() -> void:
 		idx += 1
 
 	hex_multimesh_instance.multimesh = mm
+
+
+# ============================================================================
+# 3D MESH: REBUILD SMOOTH TERRAIN
+# ============================================================================
+func _rebuild_smooth_terrain() -> void:
+	if not show_smooth_terrain:
+		return
+	var visible_hexes := _cached_visible_hexes
+	if visible_hexes.is_empty():
+		return
+
+	var min_x := INF
+	var max_x := -INF
+	var min_z := INF
+	var max_z := -INF
+	for hex in visible_hexes:
+		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+		min_x = minf(min_x, hpos.x - HEX_SIZE)
+		max_x = maxf(max_x, hpos.x + HEX_SIZE)
+		min_z = minf(min_z, hpos.z - HEX_SIZE)
+		max_z = maxf(max_z, hpos.z + HEX_SIZE)
+
+	var step := HEX_SIZE * 0.3
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+
+	var cols := int(ceilf((max_x - min_x) / step)) + 1
+	var rows := int(ceilf((max_z - min_z) / step)) + 1
+
+	for iz in rows:
+		for ix in cols:
+			var wx: float = min_x + float(ix) * step
+			var wz: float = min_z + float(iz) * step
+			var height := chunk_manager.sample_height(Vector3(wx, 0.0, wz))
+			var biome := chunk_manager.sample_biome(Vector3(wx, 0.0, wz))
+			var col: Color = ChunkManager.BIOME_COLORS[clampi(biome, 0, ChunkManager.BIOME_COLORS.size() - 1)]
+			st.set_color(col)
+			st.set_uv(Vector2(float(ix) / float(cols - 1), float(iz) / float(rows - 1)))
+			st.add_vertex(Vector3(wx, height, wz))
+
+	for iz in rows - 1:
+		for ix in cols - 1:
+			var i0: int = iz * cols + ix
+			var i1: int = i0 + 1
+			var i2: int = i0 + cols
+			var i3: int = i2 + 1
+			st.add_index(i0)
+			st.add_index(i2)
+			st.add_index(i1)
+			st.add_index(i1)
+			st.add_index(i2)
+			st.add_index(i3)
+
+	st.generate_normals()
+	smooth_terrain_instance.mesh = st.commit()
 
 
 # ============================================================================
