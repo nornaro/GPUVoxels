@@ -237,6 +237,7 @@ func _setup_3d() -> void:
 	hex_multimesh_instance = MultiMeshInstance3D.new()
 	_hex_mat = StandardMaterial3D.new()
 	_hex_mat.vertex_color_use_as_albedo = true
+	_apply_hex_render_mode()
 	hex_multimesh_instance.material_override = _hex_mat
 	add_child(hex_multimesh_instance)
 
