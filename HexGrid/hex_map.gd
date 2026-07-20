@@ -2839,31 +2839,47 @@ func _rebuild_water_mesh() -> void:
 			for ix in cols:
 				var wx: float = min_x + float(ix) * step_grid
 				var wz: float = min_z + float(iz) * step_grid
+				var wpos2 := Vector2(wx, wz)
 				var wpos := Vector3(wx, 0.0, wz)
 				var nearest_hex := HexGridMath.world_to_cube_flat_top(wpos, HEX_SIZE)
+				var is_water := _cell_exists(nearest_hex) and _is_water_biome(cells[nearest_hex].biome)
 				var water_h: float = WATER_HEIGHT - 0.01
-				var depth_val: float = 1.0
-				if _cell_exists(nearest_hex) and _is_water_biome(cells[nearest_hex].biome):
+				var depth_val: float = 0.0
+				if is_water:
 					water_h = _water_body_heights.get(nearest_hex, WATER_HEIGHT) - 0.01
 					var ws: float = _water_body_heights.get(nearest_hex, WATER_HEIGHT)
 					var wf: float = _water_floor_heights.get(nearest_hex, ws - 1.0)
 					depth_val = clampf((ws - wf) / 1.0, 0.0, 1.0)
-				var wpos2 := Vector2(wx, wz)
 				var height := water_h
-				var near_shore := false
+				var best_land_dist := INF
+				var best_land_h := 0.0
+				var best_water_h := water_h
 				for nb in HexGridMath.cube_neighbors(nearest_hex):
-					if _cell_exists(nb) and not _is_water_biome(cells[nb].biome):
+					if not _cell_exists(nb):
+						continue
+					var nb_pos := HexGridMath.cube_to_world_flat_top(nb, HEX_SIZE)
+					var nb_dist := wpos2.distance_to(Vector2(nb_pos.x, nb_pos.z))
+					if _is_water_biome(cells[nb].biome):
+						var nwh := _water_body_heights.get(nb, WATER_HEIGHT) - 0.01
+						if nb_dist < best_land_dist:
+							best_water_h = nwh
+					else:
 						var nb_cell: HexCellData = cells[nb]
 						var nb_h := _get_cell_height(nb_cell, nb)
-						var nb_pos := HexGridMath.cube_to_world_flat_top(nb, HEX_SIZE)
-						var nb_dist := wpos2.distance_to(Vector2(nb_pos.x, nb_pos.z))
-						var blend_radius := HEX_SIZE * 1.1
-						if nb_dist < blend_radius:
-							var t := clampf(nb_dist / blend_radius, 0.0, 1.0)
-							height = lerpf(nb_h, water_h, t)
-							depth_val = minf(depth_val, 1.0 - t)
-							near_shore = true
-							break
+						if nb_dist < best_land_dist:
+							best_land_dist = nb_dist
+							best_land_h = nb_h
+				var blend_radius := HEX_SIZE * 1.1
+				if best_land_dist < blend_radius:
+					var t := clampf(best_land_dist / blend_radius, 0.0, 1.0)
+					height = lerpf(best_land_h, best_water_h, t)
+					depth_val = minf(depth_val, 1.0 - t * t)
+				elif is_water:
+					height = water_h
+				else:
+					var nc: HexCellData = cells[nearest_hex]
+					height = _get_cell_height(nc, nearest_hex)
+					depth_val = 0.0
 				st.set_normal(up)
 				st.set_color(Color(depth_val, 0.0, 0.0))
 				st.add_vertex(Vector3(wx, height, wz))

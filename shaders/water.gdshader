@@ -1,10 +1,10 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
-uniform vec4 shallow_color : source_color = vec4(0.3, 0.65, 0.85, 0.45);
-uniform vec4 deep_color : source_color = vec4(0.05, 0.2, 0.45, 0.88);
-uniform float wave_speed : hint_range(0.0, 3.0) = 0.5;
-uniform float wave_strength : hint_range(0.0, 0.05) = 0.006;
+uniform vec4 shallow_color : source_color = vec4(0.25, 0.55, 0.5, 0.4);
+uniform vec4 deep_color : source_color = vec4(0.06, 0.22, 0.25, 0.85);
+uniform float wave_speed : hint_range(0.0, 5.0) = 0.8;
+uniform float wave_strength : hint_range(0.0, 0.04) = 0.004;
 
 varying vec3 v_world_pos;
 varying vec3 v_normal_interp;
@@ -27,18 +27,18 @@ float noise(vec2 p) {
 void vertex() {
 	float t = TIME * wave_speed;
 
-	float wave1 = sin(VERTEX.x * 1.8 + t * 1.0) * wave_strength;
-	float wave2 = sin(VERTEX.z * 2.2 + t * 0.7) * wave_strength * 0.6;
-	float wave3 = cos((VERTEX.x + VERTEX.z) * 1.2 + t * 0.5) * wave_strength * 0.4;
-	float wave4 = sin(VERTEX.x * 4.0 - VERTEX.z * 3.0 + t * 1.5) * wave_strength * 0.2;
+	float wave1 = sin(VERTEX.x * 2.5 + t * 1.2) * wave_strength;
+	float wave2 = sin(VERTEX.z * 3.0 + t * 0.9) * wave_strength * 0.7;
+	float wave3 = cos((VERTEX.x + VERTEX.z) * 1.8 + t * 0.6) * wave_strength * 0.5;
+	float wave4 = sin(VERTEX.x * 5.0 - VERTEX.z * 4.0 + t * 1.8) * wave_strength * 0.3;
 	VERTEX.y += wave1 + wave2 + wave3 + wave4;
 
-	float dx = wave_strength * 1.8 * cos(VERTEX.x * 1.8 + t * 1.0)
-	         + wave_strength * 0.4 * cos((VERTEX.x + VERTEX.z) * 1.2 + t * 0.5)
-	         - wave_strength * 0.4 * sin(VERTEX.x * 4.0 - VERTEX.z * 3.0 + t * 1.5);
-	float dz = wave_strength * 2.2 * cos(VERTEX.z * 2.2 + t * 0.7)
-	         + wave_strength * 0.4 * cos((VERTEX.x + VERTEX.z) * 1.2 + t * 0.5)
-	         + wave_strength * 0.6 * cos(VERTEX.x * 4.0 - VERTEX.z * 3.0 + t * 1.5);
+	float dx = wave_strength * 2.5 * cos(VERTEX.x * 2.5 + t * 1.2)
+	         + wave_strength * 0.9 * cos((VERTEX.x + VERTEX.z) * 1.8 + t * 0.6)
+	         - wave_strength * 1.2 * sin(VERTEX.x * 5.0 - VERTEX.z * 4.0 + t * 1.8);
+	float dz = wave_strength * 3.0 * cos(VERTEX.z * 3.0 + t * 0.9)
+	         + wave_strength * 0.9 * cos((VERTEX.x + VERTEX.z) * 1.8 + t * 0.6)
+	         + wave_strength * 1.2 * cos(VERTEX.x * 5.0 - VERTEX.z * 4.0 + t * 1.8);
 	vec3 n = normalize(vec3(-dx, 1.0, -dz));
 	NORMAL = n;
 
@@ -51,23 +51,22 @@ void fragment() {
 	vec3 V = normalize(CAMERA_POSITION_WORLD - v_world_pos);
 
 	float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-	fresnel = clamp(fresnel, 0.0, 0.8);
+	fresnel = clamp(fresnel, 0.0, 0.9);
 
 	float depth = COLOR.r;
 
 	ALBEDO = mix(shallow_color.rgb, deep_color.rgb, depth);
-	ALBEDO += fresnel * vec3(0.2, 0.3, 0.4);
+	ALBEDO += fresnel * vec3(0.15, 0.25, 0.2);
 	ALPHA = mix(shallow_color.a, deep_color.a, depth);
 
-	float t = TIME;
-	float shimmer1 = noise(v_world_pos.xz * 12.0 + t * 0.8);
-	float shimmer2 = noise(v_world_pos.xz * 24.0 - t * 1.2);
-	float shimmer3 = noise(v_world_pos.xz * 6.0 + t * 0.3);
-	float shimmer = shimmer1 * 0.5 + shimmer2 * 0.3 + shimmer3 * 0.2;
+	float t = TIME * 0.5;
+	float shimmer1 = noise(v_world_pos.xz * 8.0 + t * 0.6);
+	float shimmer2 = noise(v_world_pos.xz * 16.0 - t * 0.9);
+	float shimmer = shimmer1 * 0.6 + shimmer2 * 0.4;
 	shimmer = pow(shimmer, 4.0);
-	ALBEDO += vec3(0.2, 0.25, 0.3) * shimmer * (0.5 + fresnel * 0.5);
+	ALBEDO += vec3(0.15, 0.2, 0.15) * shimmer;
 
-	METALLIC = 0.15;
-	ROUGHNESS = 0.15;
-	SPECULAR = 0.7;
+	METALLIC = 0.1;
+	ROUGHNESS = 0.2;
+	SPECULAR = 0.6;
 }
