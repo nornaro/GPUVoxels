@@ -1592,19 +1592,21 @@ func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
 			model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
 		elif (cell.biome == BIOME_DIRT or cell.biome == BIOME_GRASS or cell.biome == BIOME_STONE) and ((in_rock_cluster and density3 > 0.45) or (not in_rock_cluster and density3 > 0.94)):
 			var mineral_roll := _resource_noise(h + 500.0)
+			var rock_model: String = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
 			if mineral_roll > 0.6:
 				var mineral_idx := int(_resource_noise(h + 700.0) * MINERAL_TYPES.size()) % MINERAL_TYPES.size()
 				resource_type = MINERAL_TYPES[mineral_idx]
+				model_path = rock_model
 			else:
 				resource_type = "rock"
-				model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+				model_path = rock_model
 		if not resource_type.is_empty():
 			resources.append({"sub_idx": sub_idx, "type": resource_type, "model": model_path})
 			used_subs.append(sub_idx)
 		elif sub_idx >= 1 and used_subs.size() < 7:
 			var oil_roll := _resource_noise(h + 2000.0)
 			if oil_roll > 0.92 and not _is_sub_hex_water(hex, sub_idx):
-				resources.append({"sub_idx": sub_idx, "type": "oil", "model": ""})
+				resources.append({"sub_idx": sub_idx, "type": "oil", "model": RESOURCE_ROCK_MODELS[int(h * 3.0) % RESOURCE_ROCK_MODELS.size()]})
 	return resources
 
 
@@ -1720,8 +1722,10 @@ func _rebuild_decorations() -> void:
 			if model_path.is_empty():
 				continue
 			var sub_idx: int = res["sub_idx"]
-			if not model_data.has(model_path):
-				model_data[model_path] = []
+			var res_type: String = res["type"]
+			var data_key: String = res_type + "|" + model_path
+			if not model_data.has(data_key):
+				model_data[data_key] = []
 			var local := _get_sub_hex_local_pos(hex, sub_idx)
 			var h1 := _resource_noise(float(hex.x) * 99.1 + float(hex.y) * 67.3 + float(sub_idx) * 23.7)
 			var h3 := _resource_noise(float(hex.x) * 31.7 + float(hex.y) * 59.3 + float(sub_idx) * 87.1)
@@ -1746,12 +1750,15 @@ func _rebuild_decorations() -> void:
 				base_height - height_scl * aabb.position.y,
 				hpos.z + local.y - rotated_center.z
 			)
-			model_data[model_path].append(Transform3D(basis, origin))
-	for model_path in model_data:
-		var mesh := _load_decoration_mesh(model_path)
+			model_data[data_key].append(Transform3D(basis, origin))
+	for data_key in model_data:
+		var parts: PackedStringArray = data_key.split("|", 1)
+		var res_type: String = parts[0]
+		var mesh_path: String = parts[1]
+		var mesh := _load_decoration_mesh(mesh_path)
 		if not mesh:
 			continue
-		var transforms: Array = model_data[model_path]
+		var transforms: Array = model_data[data_key]
 		var mm := MultiMesh.new()
 		mm.mesh = mesh
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -1760,8 +1767,17 @@ func _rebuild_decorations() -> void:
 			mm.set_instance_transform(i, transforms[i])
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
+		if MINERAL_COLORS.has(res_type):
+			var tint_color: Color = MINERAL_COLORS[res_type]
+			tint_color.a = 1.0
+			var orig_mat := mesh.surface_get_material(0)
+			if orig_mat:
+				var tint_mat: Material = orig_mat.duplicate()
+				if tint_mat is StandardMaterial3D:
+					tint_mat.albedo_color = tint_mat.albedo_color * tint_color
+				mi.material_override = tint_mat
 		add_child(mi)
-		_decoration_multimeshes[model_path] = mi
+		_decoration_multimeshes[data_key] = mi
 
 
 func _free_all_decorations() -> void:
