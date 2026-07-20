@@ -162,6 +162,7 @@ var _needs_data_rebuild: bool = true
 var _needs_smooth_rebuild: bool = false
 var _smooth_rebuild_timer: float = 0.0
 var _water_body_heights: Dictionary = {}
+var _water_floor_heights: Dictionary = {}
 var _pending_resource_recompute: Array[Vector3i] = []
 
 var _cached_camera_yaw: float = NAN
@@ -1111,6 +1112,9 @@ func _handle_key(event: InputEventKey) -> void:
 			_cycle_hex_render_mode()
 		KEY_B:
 			_toggle_smooth_terrain()
+		KEY_W:
+			_water_mesh_instance.visible = not _water_mesh_instance.visible
+			_tool_flash("Water " + ("ON" if _water_mesh_instance.visible else "OFF"))
 		KEY_F6:
 			_quick_save()
 		KEY_F7:
@@ -1273,6 +1277,7 @@ func _elevation_to_bw(e: float) -> Color:
 
 func _build_water_body_heights() -> void:
 	_water_body_heights.clear()
+	_water_floor_heights.clear()
 	for hex in _cached_visible_hexes:
 		if not _cell_exists(hex) or not _is_water_biome(cells[hex].biome) or _water_body_heights.has(hex):
 			continue
@@ -1295,17 +1300,45 @@ func _build_water_body_heights() -> void:
 					var h := ne * HEX_SIZE * HexGridMath.SQRT3 * ELEVATION_STEPS[elevation_step_idx] + HEX_SIZE
 					if h < min_land_height:
 						min_land_height = h
-		var water_h: float = (min_land_height - 0.2) if min_land_height < INF else WATER_HEIGHT
+		var water_surface: float = (min_land_height - 0.2) if min_land_height < INF else WATER_HEIGHT
+		var shore_queue: Array[Vector3i] = []
+		var dist: Dictionary = {}
 		for w in body:
-			_water_body_heights[w] = water_h
+			_water_body_heights[w] = water_surface
+			for nb in HexGridMath.cube_neighbors(w):
+				if _cell_exists(nb) and not _is_water_biome(cells[nb].biome):
+					shore_queue.append(w)
+					dist[w] = 0
+					break
+		var head := 0
+		while head < shore_queue.size():
+			var cur: Vector3i = shore_queue[head]
+			head += 1
+			var cur_dist: int = dist[cur]
+			for nb in HexGridMath.cube_neighbors(cur):
+				if not _water_body_heights.has(nb) or dist.has(nb):
+					continue
+				dist[nb] = cur_dist + 1
+				shore_queue.append(nb)
+		var max_dist := 1
+		for d in dist.values():
+			if d > max_dist:
+				max_dist = d
+		for w in body:
+			var d: int = dist.get(w, max_dist)
+			var t: float = clampf(float(d) / float(max(1, max_dist)), 0.0, 1.0)
+			var floor_depth: float = lerpf(0.2, 1.0, t)
+			_water_floor_heights[w] = water_surface - floor_depth
 
 
 func _get_cell_height(cell: HexCellData, hex := Vector3i.ZERO) -> float:
 	var step: float = ELEVATION_STEPS[elevation_step_idx]
 	if _is_water_biome(cell.biome):
+		if _water_floor_heights.has(hex):
+			return _water_floor_heights[hex]
 		if _water_body_heights.has(hex):
-			return _water_body_heights[hex]
-		return WATER_HEIGHT
+			return _water_body_heights[hex] - 0.2
+		return WATER_HEIGHT - 0.2
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
 	var e := maxf(cell.elevation, 0.0)
 	return e * hex_width * step + HEX_SIZE
@@ -2722,10 +2755,12 @@ func _rebuild_smooth_terrain() -> void:
 			if _cell_exists(nearest_hex):
 				var nc: HexCellData = cells[nearest_hex]
 				if _is_water_biome(nc.biome):
-					if _water_body_heights.has(nearest_hex):
-						height = _water_body_heights[nearest_hex]
+					if _water_floor_heights.has(nearest_hex):
+						height = _water_floor_heights[nearest_hex]
+					elif _water_body_heights.has(nearest_hex):
+						height = _water_body_heights[nearest_hex] - 0.2
 					else:
-						height = WATER_HEIGHT
+						height = WATER_HEIGHT - 0.2
 				else:
 					height = _get_cell_height(nc, nearest_hex)
 					var hex_pos := HexGridMath.cube_to_world_flat_top(nearest_hex, HEX_SIZE)
@@ -2736,7 +2771,7 @@ func _rebuild_smooth_terrain() -> void:
 							if _cell_exists(nb) and _is_water_biome(cells[nb].biome):
 								var nb_pos := HexGridMath.cube_to_world_flat_top(nb, HEX_SIZE)
 								var nb_dist := Vector2(wx - nb_pos.x, wz - nb_pos.z).length()
-								var water_h: float = _water_body_heights.get(nb, WATER_HEIGHT)
+								var water_h: float = _water_floor_heights.get(nb, _water_body_heights.get(nb, WATER_HEIGHT) - 0.2)
 								var t := clampf((dist_to_center - blend_radius) / (HEX_SIZE * 0.3), 0.0, 1.0)
 								var nb_t := clampf(1.0 - nb_dist / (HEX_SIZE * 1.2), 0.0, 1.0)
 								height = lerpf(height, water_h, t * nb_t)
