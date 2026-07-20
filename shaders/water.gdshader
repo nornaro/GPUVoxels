@@ -54,7 +54,7 @@ void fragment() {
 	fresnel = clamp(fresnel, 0.0, 1.0);
 
 	ALBEDO = mix(deep_color.rgb, shallow_color.rgb, 0.45 + fresnel * 0.55);
-	ALPHA = mix(deep_color.a, shallow_color.a, 0.4 + fresnel * 0.6);
+	ALPHA = 1.0;
 
 	float t = TIME;
 

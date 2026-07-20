@@ -2833,13 +2833,32 @@ func _rebuild_water_mesh() -> void:
 		var step_grid := HEX_SIZE * 0.3
 		var cols := int(ceilf((max_x - min_x) / step_grid)) + 1
 		var rows := int(ceilf((max_z - min_z) / step_grid)) + 1
-		var water_h: float = _water_body_heights.get(water_hexes[0], WATER_HEIGHT) - 0.01
+		var elev_step: float = ELEVATION_STEPS[elevation_step_idx]
+		var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
 		for iz in rows:
 			for ix in cols:
 				var wx: float = min_x + float(ix) * step_grid
 				var wz: float = min_z + float(iz) * step_grid
+				var wpos := Vector3(wx, 0.0, wz)
+				var nearest_hex := HexGridMath.world_to_cube_flat_top(wpos, HEX_SIZE)
+				var water_h: float = WATER_HEIGHT - 0.01
+				if _cell_exists(nearest_hex) and _is_water_biome(cells[nearest_hex].biome):
+					water_h = _water_body_heights.get(nearest_hex, WATER_HEIGHT) - 0.01
+				var wpos2 := Vector2(wx, wz)
+				var height := water_h
+				for nb in HexGridMath.cube_neighbors(nearest_hex):
+					if _cell_exists(nb) and not _is_water_biome(cells[nb].biome):
+						var nb_cell: HexCellData = cells[nb]
+						var nb_h := _get_cell_height(nb_cell, nb)
+						var nb_pos := HexGridMath.cube_to_world_flat_top(nb, HEX_SIZE)
+						var nb_dist := wpos2.distance_to(Vector2(nb_pos.x, nb_pos.z))
+						var blend_radius := HEX_SIZE * 1.1
+						if nb_dist < blend_radius:
+							var t := clampf(nb_dist / blend_radius, 0.0, 1.0)
+							height = lerpf(nb_h, water_h, t)
+							break
 				st.set_normal(up)
-				st.add_vertex(Vector3(wx, water_h, wz))
+				st.add_vertex(Vector3(wx, height, wz))
 		for iz in rows - 1:
 			for ix in cols - 1:
 				var i0: int = iz * cols + ix
