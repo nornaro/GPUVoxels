@@ -23,9 +23,9 @@ const BIOME_COLORS: Array = [
 	Color(0.32, 0.55, 0.82, 1.0),
 ]
 
-var noise_freq: float = 0.03
+var noise_freq: float = 0.0075
 var noise_seed: int = 42
-var detail_freq: float = 0.1
+var detail_freq: float = 0.025
 var detail_seed: int = 1042
 var fractal_octaves: int = 3
 var fractal_lacunarity: float = 2.0
@@ -41,8 +41,8 @@ var _detail_noise: FastNoiseLite
 func randomize_seeds() -> void:
 	noise_seed = randi()
 	detail_seed = randi()
-	noise_freq = randf_range(0.015, 0.06)
-	detail_freq = randf_range(0.05, 0.2)
+	noise_freq = randf_range(0.004, 0.015)
+	detail_freq = randf_range(0.0125, 0.05)
 	_init_noise()
 
 var cells: Dictionary

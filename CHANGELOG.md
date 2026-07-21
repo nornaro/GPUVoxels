@@ -5,10 +5,20 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **Complete 2D rewrite** — Stripped all 3D rendering (chunks, meshes, shaders, libraries). Kept only `HexGridMath` and simplified `HexCellData`.
-- **2D hex map** — Flat 2D top-down hex map with Camera2D panning (WASD/MMB) and scroll zoom.
-- **Noise-based terrain** — Infinite terrain generated on-demand from FastNoiseLite (Simplex Smooth, FBM 3 octaves). 6 biomes: deep water, water, beach, grass, dirt, stone.
-- **Sub-hex overlay** — Every hex split into 7 sub-hexes (1 center + 6 ring). Transparent by default, toggle with H key.
-- **River paint brush** — Free-draw rivers on sub-hexes. LMB paint, RMB erase. Toggle full/half brush with Shift.
-- **Road line tool** — Point-to-point thick line drawing. Click first hex, click second hex to draw road. Roads rendered as thick lines with end caps.
-- **Controls** — 1=Navigate, 2=River, 3=Road. G=grid lines. H=overlay. Esc=cancel.
+- **Larger landmasses** — Reduced base noise frequency from 0.03 to 0.0075 (4x) and detail frequency from 0.1 to 0.025 (4x), making continents and biomes scale ~4x larger. Randomized seed ranges adjusted accordingly.
+- **Zoom-out stutter fix (LOD)** — Smooth terrain and water mesh grid step now scales with camera distance (1x at default zoom to 5x at max zoom), reducing vertex count from ~326K to ~13K at max zoom-out. Smooth rebuild timer also scales (0.15s to 0.6s debounce).
+- **Grid lines skip at distance** — Grid lines are no longer rebuilt when camera distance exceeds 60 (invisible at that scale anyway), saving thousands of trig calls per frame.
+- **Cull margins** — Added extra_cull_margin (20-50) on hex multimesh, smooth terrain, and water mesh instances to prevent frustum-edge popping during camera movement.
+
+### Fixed
+- **`_flow_river` short-circuit** — Split combined `_cell_exists(start) and _is_water_biome(...)` check so non-existent start returns `[]` without crashing.
+- **`_level_at` re-validation** — Validates `_level_target` still exists before accessing cells dictionary.
+- **`_pending_resource_recompute` loop** — Fixed broken GDScript `for` loop syntax.
+
+### Previous (carried forward)
+- **Complete 2D rewrite** — Stripped all 3D rendering. Kept `HexGridMath` and simplified `HexCellData`.
+- **Noise-based terrain** — Infinite terrain from FastNoiseLite. 6 biomes: deep water, water, beach, grass, dirt, stone.
+- **Sub-hex overlay** — 7 sub-hexes per hex. Toggle with H key.
+- **River paint brush** — Free-draw rivers on sub-hexes. LMB paint, RMB erase.
+- **Road line tool** — Point-to-point thick line drawing.
+- **Controls** — 1=Navigate, 2=River, 3=Road. G=grid. H=overlay. Esc=cancel.

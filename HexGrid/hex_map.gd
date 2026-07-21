@@ -69,7 +69,7 @@ var hex_render_mode: int = 0
 const HEX_RENDER_MODE_NAMES := ["Shaded", "Simple 3D", "Flat"]
 
 ## Toggle smooth terrain (B key). Shows continuous curvy terrain instead of hexes.
-var show_smooth_terrain: bool = false
+var show_smooth_terrain: bool = true  # Changed default to true
 
 ## Current tool: 0=Navigate, 1=River, 2=Road, 3=Place, 4=Raise, 5=Flatten, 6=Level, 7=WaterFlow. Keys 1-8.
 @export_range(0, 7) var tool_mode: int = 0:
@@ -260,6 +260,7 @@ func _setup_3d() -> void:
 	_hex_mat.vertex_color_use_as_albedo = true
 	_apply_hex_render_mode()
 	hex_multimesh_instance.material_override = _hex_mat
+	hex_multimesh_instance.extra_cull_margin = 20.0
 	add_child(hex_multimesh_instance)
 
 	overlay_mesh_instance = MeshInstance3D.new()
@@ -283,6 +284,7 @@ func _setup_3d() -> void:
 	smooth_mat.vertex_color_use_as_albedo = true
 	smooth_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	smooth_terrain_instance.material_override = smooth_mat
+	smooth_terrain_instance.extra_cull_margin = 50.0
 	smooth_terrain_instance.visible = false
 	add_child(smooth_terrain_instance)
 
@@ -294,6 +296,7 @@ func _setup_3d() -> void:
 	_water_mesh_instance.material_override = water_mat
 	_water_mesh_instance.visible = false
 	_water_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_water_mesh_instance.extra_cull_margin = 50.0
 	add_child(_water_mesh_instance)
 
 	_blocks_container = Node3D.new()
@@ -752,7 +755,8 @@ func _process(delta: float) -> void:
 		_needs_overlay_rebuild = false
 
 	if _needs_smooth_rebuild and show_smooth_terrain:
-		_smooth_rebuild_timer = 0.15
+		var lod_delay := clampf(camera_distance / 25.0, 1.0, 4.0) * 0.15
+		_smooth_rebuild_timer = lod_delay
 		_needs_smooth_rebuild = false
 	if _smooth_rebuild_timer > 0.0:
 		_smooth_rebuild_timer -= delta
@@ -2646,6 +2650,12 @@ func _get_visible_hex_range() -> Array[Vector3i]:
 	return result
 
 
+func _grid_step_lod() -> float:
+	var base_step := HEX_SIZE * 0.3
+	var lod_factor := clampf(camera_distance / 25.0, 1.0, 5.0)
+	return base_step * lod_factor
+
+
 func _spiral_range(center: Vector3i, radius: int) -> Array[Vector3i]:
 	var result: Array[Vector3i] = [center]
 	for r in range(1, radius + 1):
@@ -2762,7 +2772,7 @@ func _rebuild_smooth_terrain() -> void:
 		min_z = minf(min_z, hpos.z - HEX_SIZE)
 		max_z = maxf(max_z, hpos.z + HEX_SIZE)
 
-	var step_grid := HEX_SIZE * 0.3
+	var step_grid := _grid_step_lod()
 	var elev_step: float = ELEVATION_STEPS[elevation_step_idx]
 	var hex_width: float = HEX_SIZE * HexGridMath.SQRT3
 	var st := SurfaceTool.new()
@@ -2855,7 +2865,7 @@ func _rebuild_water_mesh() -> void:
 			max_x = maxf(max_x, hpos.x + HEX_SIZE * 1.2)
 			min_z = minf(min_z, hpos.z - HEX_SIZE * 1.2)
 			max_z = maxf(max_z, hpos.z + HEX_SIZE * 1.2)
-		var step_grid := HEX_SIZE * 0.3
+		var step_grid := _grid_step_lod()
 		var cols := int(ceilf((max_x - min_x) / step_grid)) + 1
 		var rows := int(ceilf((max_z - min_z) / step_grid)) + 1
 		var elev_step: float = ELEVATION_STEPS[elevation_step_idx]
@@ -3177,7 +3187,7 @@ func _add_river_debug_overlay_tris(imm: ImmediateMesh) -> void:
 # 3D MESH: GRID LINES
 # ============================================================================
 func _rebuild_grid_lines() -> void:
-	if not show_grid:
+	if not show_grid or camera_distance > 60.0:
 		grid_lines_mesh_instance.mesh = null
 		return
 
