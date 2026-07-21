@@ -745,9 +745,9 @@ func _process(delta: float) -> void:
 
 	if _needs_rebuild:
 		_rebuild_hex_multimesh()
-		_rebuild_overlay_mesh()
-		_rebuild_grid_lines()
 		_rebuild_water_mesh()
+		_rebuild_grid_lines()
+		_rebuild_overlay_mesh()
 		_needs_rebuild = false
 		_needs_overlay_rebuild = false
 	elif _needs_overlay_rebuild:
@@ -905,13 +905,16 @@ func _ensure_draw_cache() -> void:
 	if _cached_camera_yaw == camera_yaw and _cached_camera_pitch == camera_pitch and \
 	   _cached_camera_distance == camera_distance and _cached_camera_pivot == camera_pivot:
 		return
+	var pivot_delta := _cached_camera_pivot.distance_to(camera_pivot)
+	var dist_delta := absf(_cached_camera_distance - camera_distance)
+	var yaw_delta := absf(_cached_camera_yaw - camera_yaw)
+	var pitch_delta := absf(_cached_camera_pitch - camera_pitch)
+	if pivot_delta < 0.3 and dist_delta < 0.1 and yaw_delta < 0.3 and pitch_delta < 0.3:
+		return
 	_cached_camera_yaw = camera_yaw
 	_cached_camera_pitch = camera_pitch
 	_cached_camera_distance = camera_distance
 	_cached_camera_pivot = camera_pivot
-	var prev_chunk_min := _cached_chunk_min
-	var prev_chunk_max := _cached_chunk_max
-	var prev_hex_count := _cached_visible_hexes.size()
 	_cached_visible_hexes = _get_visible_hex_range()
 	_cached_visible_set.clear()
 	for hex in _cached_visible_hexes:
@@ -934,10 +937,6 @@ func _ensure_draw_cache() -> void:
 		var vdata: Dictionary = vertex_subs[key]
 		if vdata["river"] and vdata.has("hex") and _cached_visible_set.has(vdata["hex"]):
 			_cached_visible_vertex_rivers.append(key)
-	var chunk_range_changed := _cached_chunk_min != prev_chunk_min or _cached_chunk_max != prev_chunk_max
-	var hex_count_changed := _cached_visible_hexes.size() != prev_hex_count
-	if chunk_range_changed or hex_count_changed:
-		_needs_rebuild = true
 
 
 # ============================================================================
@@ -2710,11 +2709,18 @@ func _create_hex_prism_mesh() -> ArrayMesh:
 # 3D MESH: REBUILD MULTIMESH
 # ============================================================================
 func _rebuild_hex_multimesh() -> void:
-	var visible_hexes := _cached_visible_hexes
 	var valid_hexes: Array[Vector3i] = []
-	for hex in visible_hexes:
-		if _cell_exists(hex):
-			valid_hexes.append(hex)
+	for cq in range(_cached_chunk_min.x - 1, _cached_chunk_max.x + 2):
+		for cr in range(_cached_chunk_min.y - 1, _cached_chunk_max.y + 2):
+			var base_q: int = cq * CHUNK_SIZE
+			var base_r: int = cr * CHUNK_SIZE
+			for dx in CHUNK_SIZE:
+				for dy in CHUNK_SIZE:
+					var q: int = base_q + dx
+					var r: int = base_r + dy
+					var hex := Vector3i(q, r, -q - r)
+					if cells.has(hex):
+						valid_hexes.append(hex)
 	var hex_count := valid_hexes.size()
 	if hex_count == 0:
 		hex_multimesh_instance.multimesh = null
@@ -2757,20 +2763,28 @@ func _rebuild_hex_multimesh() -> void:
 func _rebuild_smooth_terrain() -> void:
 	if not show_smooth_terrain:
 		return
-	var visible_hexes := _cached_visible_hexes
-	if visible_hexes.is_empty():
-		return
 
+	var corners: Array[Vector3i] = [
+		Vector3i((_cached_chunk_min.x - 1) * CHUNK_SIZE, (_cached_chunk_min.y - 1) * CHUNK_SIZE, 0),
+		Vector3i((_cached_chunk_max.x + 2) * CHUNK_SIZE, (_cached_chunk_min.y - 1) * CHUNK_SIZE, 0),
+		Vector3i((_cached_chunk_min.x - 1) * CHUNK_SIZE, (_cached_chunk_max.y + 2) * CHUNK_SIZE, 0),
+		Vector3i((_cached_chunk_max.x + 2) * CHUNK_SIZE, (_cached_chunk_max.y + 2) * CHUNK_SIZE, 0),
+	]
 	var min_x := INF
 	var max_x := -INF
 	var min_z := INF
 	var max_z := -INF
-	for hex in visible_hexes:
-		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		min_x = minf(min_x, hpos.x - HEX_SIZE)
-		max_x = maxf(max_x, hpos.x + HEX_SIZE)
-		min_z = minf(min_z, hpos.z - HEX_SIZE)
-		max_z = maxf(max_z, hpos.z + HEX_SIZE)
+	for c in corners:
+		c.z = -c.x - c.y
+		var p := HexGridMath.cube_to_world_flat_top(c, HEX_SIZE)
+		min_x = minf(min_x, p.x)
+		max_x = maxf(max_x, p.x)
+		min_z = minf(min_z, p.z)
+		max_z = maxf(max_z, p.z)
+	min_x -= HEX_SIZE * 2.0
+	max_x += HEX_SIZE * 2.0
+	min_z -= HEX_SIZE * 2.0
+	max_z += HEX_SIZE * 2.0
 
 	var step_grid := _grid_step_lod()
 	var elev_step: float = ELEVATION_STEPS[elevation_step_idx]
@@ -2842,9 +2856,15 @@ func _rebuild_smooth_terrain() -> void:
 # ============================================================================
 func _rebuild_water_mesh() -> void:
 	var water_hexes: Array[Vector3i] = []
-	for hex in _cached_visible_hexes:
-		if _cell_exists(hex) and _is_water_biome(cells[hex].biome):
-			water_hexes.append(hex)
+	for cq in range(_cached_chunk_min.x - 1, _cached_chunk_max.x + 2):
+		for cr in range(_cached_chunk_min.y - 1, _cached_chunk_max.y + 2):
+			var base_q: int = cq * CHUNK_SIZE
+			var base_r: int = cr * CHUNK_SIZE
+			for dx in CHUNK_SIZE:
+				for dy in CHUNK_SIZE:
+					var hex := Vector3i(base_q + dx, base_r + dy, -(base_q + dx) - (base_r + dy))
+					if _cell_exists(hex) and _is_water_biome(cells[hex].biome):
+						water_hexes.append(hex)
 	if water_hexes.is_empty():
 		_water_mesh_instance.mesh = null
 		_water_mesh_instance.visible = false
@@ -2855,16 +2875,27 @@ func _rebuild_water_mesh() -> void:
 	var up := Vector3.UP
 
 	if show_smooth_terrain:
+		var water_corners: Array[Vector3i] = [
+			Vector3i((_cached_chunk_min.x - 1) * CHUNK_SIZE, (_cached_chunk_min.y - 1) * CHUNK_SIZE, 0),
+			Vector3i((_cached_chunk_max.x + 2) * CHUNK_SIZE, (_cached_chunk_min.y - 1) * CHUNK_SIZE, 0),
+			Vector3i((_cached_chunk_min.x - 1) * CHUNK_SIZE, (_cached_chunk_max.y + 2) * CHUNK_SIZE, 0),
+			Vector3i((_cached_chunk_max.x + 2) * CHUNK_SIZE, (_cached_chunk_max.y + 2) * CHUNK_SIZE, 0),
+		]
 		var min_x := INF
 		var max_x := -INF
 		var min_z := INF
 		var max_z := -INF
-		for hex in water_hexes:
-			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			min_x = minf(min_x, hpos.x - HEX_SIZE * 1.2)
-			max_x = maxf(max_x, hpos.x + HEX_SIZE * 1.2)
-			min_z = minf(min_z, hpos.z - HEX_SIZE * 1.2)
-			max_z = maxf(max_z, hpos.z + HEX_SIZE * 1.2)
+		for c in water_corners:
+			c.z = -c.x - c.y
+			var p := HexGridMath.cube_to_world_flat_top(c, HEX_SIZE)
+			min_x = minf(min_x, p.x)
+			max_x = maxf(max_x, p.x)
+			min_z = minf(min_z, p.z)
+			max_z = maxf(max_z, p.z)
+		min_x -= HEX_SIZE * 2.0
+		max_x += HEX_SIZE * 2.0
+		min_z -= HEX_SIZE * 2.0
+		max_z += HEX_SIZE * 2.0
 		var step_grid := _grid_step_lod()
 		var cols := int(ceilf((max_x - min_x) / step_grid)) + 1
 		var rows := int(ceilf((max_z - min_z) / step_grid)) + 1
