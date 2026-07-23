@@ -1,3 +1,4 @@
+#[compute]
 #version 450
 
 layout(local_size_x = 10, local_size_y = 10) in;
@@ -15,10 +16,10 @@ layout(set = 0, binding = 0, std430) readonly buffer Params {
 	float detail_octaves;
 	float detail_lacunarity;
 	float detail_gain;
+	float warp_strength;
+	float moisture_freq;
+	float moisture_seed;
 	float _pad0;
-	float _pad1;
-	float _pad2;
-	float _pad3;
 };
 
 layout(set = 0, binding = 1, std430) readonly buffer Origins {
@@ -29,57 +30,46 @@ layout(set = 0, binding = 2, std430) writeonly buffer Output {
 	float data[];
 };
 
-vec3 mod289v3(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec2 mod289v2(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec3 permute(vec3 x) { return mod289v3(((x * 34.0) + 1.0) * x); }
-
-float snoise(vec2 v) {
-	const vec4 C = vec4(0.211324865405187, 0.366025403784439,
-	                     -0.577350269189626, 0.024390243902439);
-	vec2 i = floor(v + dot(v, C.yy));
-	vec2 x0 = v - i + dot(i, C.xx);
-	vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-	vec4 x12 = x0.xyxy + C.xxzz;
-	x12.xy -= i1;
-	i = mod289v2(i);
-	vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
-		+ i.x + vec3(0.0, i1.x, 1.0));
-	vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy),
-		dot(x12.zw, x12.zw)), 0.0);
-	m = m * m;
-	m = m * m;
-	vec3 x_ = 2.0 * fract(p * C.www) - 1.0;
-	vec3 h = abs(x_) - 0.5;
-	vec3 ox = floor(x_ + 0.5);
-	vec3 a0 = x_ - ox;
-	m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
-	vec3 g;
-	g.x = a0.x * x0.x + h.x * x0.y;
-	g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-	return 130.0 * dot(m, g);
+uint ihash(uint n) {
+	n = (n << 13u) ^ n;
+	return (n * (n * n * 15731u + 789221u) + 1376312589u) & 0x7FFFFFFFu;
 }
 
-float fbm(vec2 pos, int seed, int octaves, float lacunarity, float gain) {
+vec2 hash2(vec2 p, float seed) {
+	ivec2 ip = ivec2(floor(p));
+	uint seed_bits = uint(seed * 43758.5453);
+	uint ix = uint(ip.x) + seed_bits;
+	uint iy = uint(ip.y) + seed_bits;
+	uint h1 = ihash(ihash(iy + 127u) + ix);
+	uint h2 = ihash(iy + ihash(ix + 311u));
+	return vec2(float(h1 & 0xFFFFu) / 32767.5 - 1.0,
+	            float(h2 & 0xFFFFu) / 32767.5 - 1.0);
+}
+
+float perlin_noise(vec2 p, float seed) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+
+	float a = dot(hash2(i + vec2(0.0, 0.0), seed), f - vec2(0.0, 0.0));
+	float b = dot(hash2(i + vec2(1.0, 0.0), seed), f - vec2(1.0, 0.0));
+	float c = dot(hash2(i + vec2(0.0, 1.0), seed), f - vec2(0.0, 1.0));
+	float d = dot(hash2(i + vec2(1.0, 1.0), seed), f - vec2(1.0, 1.0));
+
+	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float fbm(vec2 pos, float seed, int octaves, float lacunarity, float gain) {
 	float value = 0.0;
 	float amplitude = 1.0;
 	float frequency = 1.0;
 	for (int i = 0; i < octaves; i++) {
-		vec2 offset = vec2(float(seed + i * 7919) * 0.0137,
-		                   float(seed + i * 6271) * 0.0253);
-		value += snoise(pos * frequency + offset) * amplitude;
+		float n = perlin_noise(pos * frequency + vec2(float(i) * 31.7, float(i) * 47.3) * seed * 0.001, seed + float(i) * 17.0);
+		value += n * amplitude;
 		frequency *= lacunarity;
 		amplitude *= gain;
 	}
 	return value;
-}
-
-int elevation_to_biome(float e) {
-	if (e < -0.4) return 0;
-	if (e < -0.25) return 1;
-	if (e < -0.1) return 2;
-	if (e < 0.3) return 3;
-	if (e < 0.5) return 4;
-	return 5;
 }
 
 void main() {
@@ -92,19 +82,48 @@ void main() {
 	if (cell.x >= ics || cell.y >= ics) return;
 
 	ivec2 origin = chunk_origins[chunk_id] * ics;
-	int q = origin.x + cell.x;
-	int r = origin.y + cell.y;
+	float q = float(origin.x + cell.x);
+	float r = float(origin.y + cell.y);
 
-	const float SQRT3 = 1.73205080757;
-	float wx = 1.5 * float(q);
-	float wz = SQRT3 * (float(r) + float(q) * 0.5);
-	vec2 pos = vec2(wx, wz);
+	vec2 pos = vec2(q, r) * noise_freq;
+	float seed = noise_seed;
 
-	float elevation = fbm(pos * noise_freq, int(noise_seed),
-		int(fractal_octaves), fractal_lacunarity, fractal_gain);
+	vec2 q_warp = vec2(
+		fbm(pos + vec2(0.0, 0.0), seed + 100.0, 3, 2.0, 0.5),
+		fbm(pos + vec2(5.2, 1.3), seed + 200.0, 3, 2.0, 0.5)
+	);
+	vec2 warped = pos + warp_strength * q_warp;
+
+	float elevation = fbm(warped, seed, int(fractal_octaves), fractal_lacunarity, fractal_gain);
+
+	float detail = fbm(pos * (detail_freq / noise_freq), seed + 500.0,
+		int(detail_octaves), detail_lacunarity, detail_gain);
+	elevation = elevation + detail * 0.3;
+
+	float moisture = fbm(vec2(q, r) * moisture_freq, moisture_seed,
+		4, 2.0, 0.5);
+
+	elevation = elevation * 0.5 + 0.5;
+	elevation = clamp(elevation, 0.0, 1.0);
+	moisture = moisture * 0.5 + 0.5;
+	moisture = clamp(moisture, 0.0, 1.0);
+
+	float water_line = 0.32;
+	int biome;
+	if (elevation < water_line * 0.5) {
+		biome = 0;
+	} else if (elevation < water_line) {
+		biome = 1;
+	} else if (elevation < water_line + 0.04) {
+		biome = 2;
+	} else if (elevation < 0.7) {
+		biome = (moisture > 0.5) ? 3 : 4;
+	} else {
+		biome = 5;
+	}
 
 	float sub_heights[13];
-	sub_heights[0] = round(elevation * 10.0) / 10.0;
+	sub_heights[0] = elevation;
 
 	const float HEX_SIZE = 1.1547;
 	const float INNER_DIST = HEX_SIZE * 0.57735026919;
@@ -112,21 +131,29 @@ void main() {
 
 	for (int i = 0; i < 6; i++) {
 		float angle = radians(30.0 + 60.0 * float(i));
-		vec2 sub_pos = pos + vec2(cos(angle), sin(angle)) * INNER_DIST;
-		float detail = fbm(sub_pos * detail_freq, int(detail_seed),
-			int(detail_octaves), detail_lacunarity, detail_gain) * 0.15;
-		sub_heights[i + 1] = round((elevation + detail) * 10.0) / 10.0;
+		float sub_q = q + cos(angle) * INNER_DIST;
+		float sub_r = r + sin(angle) * INNER_DIST;
+		vec2 sub_pos = vec2(sub_q, sub_r) * noise_freq;
+		float sub_e = perlin_noise(sub_pos + warp_strength * vec2(
+			perlin_noise(sub_pos + vec2(0.0, 0.0), seed + 100.0),
+			perlin_noise(sub_pos + vec2(5.2, 1.3), seed + 200.0)
+		), seed);
+		float sub_d = perlin_noise(sub_pos * (detail_freq / noise_freq), seed + 500.0);
+		sub_heights[i + 1] = clamp((sub_e + sub_d * 0.3) * 0.5 + 0.5, 0.0, 1.0);
 	}
 
 	for (int i = 0; i < 6; i++) {
 		float angle = radians(60.0 * float(i));
-		vec2 sub_pos = pos + vec2(cos(angle), sin(angle)) * OUTER_DIST;
-		float detail = fbm(sub_pos * detail_freq, int(detail_seed),
-			int(detail_octaves), detail_lacunarity, detail_gain) * 0.15;
-		sub_heights[i + 7] = round((elevation + detail) * 10.0) / 10.0;
+		float sub_q = q + cos(angle) * OUTER_DIST;
+		float sub_r = r + sin(angle) * OUTER_DIST;
+		vec2 sub_pos = vec2(sub_q, sub_r) * noise_freq;
+		float sub_e = perlin_noise(sub_pos + warp_strength * vec2(
+			perlin_noise(sub_pos + vec2(0.0, 0.0), seed + 100.0),
+			perlin_noise(sub_pos + vec2(5.2, 1.3), seed + 200.0)
+		), seed);
+		float sub_d = perlin_noise(sub_pos * (detail_freq / noise_freq), seed + 500.0);
+		sub_heights[i + 7] = clamp((sub_e + sub_d * 0.3) * 0.5 + 0.5, 0.0, 1.0);
 	}
-
-	int biome = elevation_to_biome(elevation);
 
 	int cells_per_chunk = ics * ics;
 	int cell_idx = cell.x * ics + cell.y;

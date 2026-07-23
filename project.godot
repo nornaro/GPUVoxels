@@ -22,7 +22,6 @@ config/icon="res://icon.svg"
 [autoload]
 
 McpBridge="*uid://dw5bvj1fckgfh"
-MCPRuntimeProbe="*res://addons/godot_mcp/runtime/mcp_runtime_probe.gd"
 
 [debug]
 
@@ -153,6 +152,10 @@ reset_rot={
 [memory]
 
 limits/message_queue/max_size_mb=320
+
+[physics]
+
+3d/physics_ticks_per_second=1
 
 [rendering]
 

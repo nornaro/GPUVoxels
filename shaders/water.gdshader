@@ -25,24 +25,25 @@ float noise(vec2 p) {
 }
 
 void vertex() {
+	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+
 	float t = TIME * wave_speed;
 
-	float wave1 = sin(VERTEX.x * 2.5 + t * 1.2) * wave_strength;
-	float wave2 = sin(VERTEX.z * 3.0 + t * 0.9) * wave_strength * 0.7;
-	float wave3 = cos((VERTEX.x + VERTEX.z) * 1.8 + t * 0.6) * wave_strength * 0.5;
-	float wave4 = sin(VERTEX.x * 5.0 - VERTEX.z * 4.0 + t * 1.8) * wave_strength * 0.3;
+	float wave1 = sin(v_world_pos.x * 2.5 + t * 1.2) * wave_strength;
+	float wave2 = sin(v_world_pos.z * 3.0 + t * 0.9) * wave_strength * 0.7;
+	float wave3 = cos((v_world_pos.x + v_world_pos.z) * 1.8 + t * 0.6) * wave_strength * 0.5;
+	float wave4 = sin(v_world_pos.x * 5.0 - v_world_pos.z * 4.0 + t * 1.8) * wave_strength * 0.3;
 	VERTEX.y += wave1 + wave2 + wave3 + wave4;
 
-	float dx = wave_strength * 2.5 * cos(VERTEX.x * 2.5 + t * 1.2)
-	         + wave_strength * 0.9 * cos((VERTEX.x + VERTEX.z) * 1.8 + t * 0.6)
-	         - wave_strength * 1.2 * sin(VERTEX.x * 5.0 - VERTEX.z * 4.0 + t * 1.8);
-	float dz = wave_strength * 3.0 * cos(VERTEX.z * 3.0 + t * 0.9)
-	         + wave_strength * 0.9 * cos((VERTEX.x + VERTEX.z) * 1.8 + t * 0.6)
-	         + wave_strength * 1.2 * cos(VERTEX.x * 5.0 - VERTEX.z * 4.0 + t * 1.8);
+	float dx = wave_strength * 2.5 * cos(v_world_pos.x * 2.5 + t * 1.2)
+	         + wave_strength * 0.9 * cos((v_world_pos.x + v_world_pos.z) * 1.8 + t * 0.6)
+	         - wave_strength * 1.2 * sin(v_world_pos.x * 5.0 - v_world_pos.z * 4.0 + t * 1.8);
+	float dz = wave_strength * 3.0 * cos(v_world_pos.z * 3.0 + t * 0.9)
+	         + wave_strength * 0.9 * cos((v_world_pos.x + v_world_pos.z) * 1.8 + t * 0.6)
+	         + wave_strength * 1.2 * cos(v_world_pos.x * 5.0 - v_world_pos.z * 4.0 + t * 1.8);
 	vec3 n = normalize(vec3(-dx, 1.0, -dz));
 	NORMAL = n;
 
-	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_normal_interp = (MODEL_MATRIX * vec4(n, 0.0)).xyz;
 }
 
