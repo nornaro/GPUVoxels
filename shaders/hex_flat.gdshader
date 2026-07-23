@@ -9,6 +9,8 @@ uniform float noise_gain = 0.5;
 uniform float max_height = 5.0;
 uniform float water_level = 0.32;
 uniform float grid_line_width : hint_range(0.0, 0.5) = 0.08;
+uniform float height_step : hint_range(0.0, 20.0, 0.1) = 0.0;
+uniform float height_exp : hint_range(0.1, 5.0, 0.1) = 1.0;
 
 varying float v_elevation;
 varying float v_biome;
@@ -98,7 +100,11 @@ void vertex() {
 	else if (e < 0.92) v_biome = 9.0;
 	else v_biome = 10.0;
 
-	float h = max(e * max_height, 0.05);
+	float h = pow(e, 1.0 / height_exp) * max_height;
+	if (height_step > 0.0) {
+		h = floor(h / height_step) * height_step;
+	}
+	h = max(h, 0.05);
 	VERTEX.y = h;
 }
 

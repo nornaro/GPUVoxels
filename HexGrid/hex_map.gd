@@ -8,6 +8,12 @@ var _height_slider: HSlider
 var _height_label: Label
 var _grid_slider: HSlider
 var _grid_label: Label
+var _radius_slider: HSlider
+var _radius_label: Label
+var _step_slider: HSlider
+var _step_label: Label
+var _exp_slider: HSlider
+var _exp_label: Label
 
 var cam_yaw: float = 45.0
 var cam_pitch: float = -55.0
@@ -20,6 +26,8 @@ var orbit_pitch_start: float = 0.0
 var panning: bool = false
 var pan_start: Vector2 = Vector2.ZERO
 var pan_origin: Vector3 = Vector3.ZERO
+
+var _current_approach: String = ""
 
 func _ready() -> void:
 	_setup_lighting()
@@ -146,6 +154,23 @@ func _setup_ui() -> void:
 	var sep2 := HSeparator.new()
 	vbox.add_child(sep2)
 
+	_radius_label = Label.new()
+	_radius_label.text = "Radius: 100"
+	_radius_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(_radius_label)
+
+	_radius_slider = HSlider.new()
+	_radius_slider.min_value = 10.0
+	_radius_slider.max_value = 10000.0
+	_radius_slider.step = 10.0
+	_radius_slider.value = 100.0
+	_radius_slider.custom_minimum_size = Vector2(180, 0)
+	_radius_slider.value_changed.connect(_on_radius_changed)
+	vbox.add_child(_radius_slider)
+
+	var sep_h := HSeparator.new()
+	vbox.add_child(sep_h)
+
 	_height_label = Label.new()
 	_height_label.text = "Height: 100"
 	_height_label.add_theme_font_size_override("font_size", 12)
@@ -159,6 +184,40 @@ func _setup_ui() -> void:
 	_height_slider.custom_minimum_size = Vector2(180, 0)
 	_height_slider.value_changed.connect(_on_height_changed)
 	vbox.add_child(_height_slider)
+
+	var sep_exp := HSeparator.new()
+	vbox.add_child(sep_exp)
+
+	_exp_label = Label.new()
+	_exp_label.text = "Height Curve: 1.0"
+	_exp_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(_exp_label)
+
+	_exp_slider = HSlider.new()
+	_exp_slider.min_value = 0.1
+	_exp_slider.max_value = 5.0
+	_exp_slider.step = 0.1
+	_exp_slider.value = 1.0
+	_exp_slider.custom_minimum_size = Vector2(180, 0)
+	_exp_slider.value_changed.connect(_on_exp_changed)
+	vbox.add_child(_exp_slider)
+
+	var sep_s := HSeparator.new()
+	vbox.add_child(sep_s)
+
+	_step_label = Label.new()
+	_step_label.text = "Height Step: 0"
+	_step_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(_step_label)
+
+	_step_slider = HSlider.new()
+	_step_slider.min_value = 0.0
+	_step_slider.max_value = 20.0
+	_step_slider.step = 0.5
+	_step_slider.value = 0.0
+	_step_slider.custom_minimum_size = Vector2(180, 0)
+	_step_slider.value_changed.connect(_on_step_changed)
+	vbox.add_child(_step_slider)
 
 	var sep_grid := HSeparator.new()
 	vbox.add_child(sep_grid)
@@ -192,41 +251,66 @@ func _log(msg: String) -> void:
 	print(msg)
 
 
-func _on_height_changed(value: float) -> void:
-	_height_label.text = "Height: %d" % int(value)
+func _apply_uniform(param: String, value: float) -> void:
 	if _terrain:
 		for child in _terrain.get_children():
 			if child is MeshInstance3D or child is MultiMeshInstance3D:
 				var mat = child.material_override as ShaderMaterial
 				if mat:
-					mat.set_shader_parameter("max_height", value)
+					mat.set_shader_parameter(param, value)
+
+
+func _on_radius_changed(value: float) -> void:
+	_radius_label.text = "Radius: %d" % int(value)
+	if _current_approach != "":
+		_rebuild_terrain()
+
+
+func _on_height_changed(value: float) -> void:
+	_height_label.text = "Height: %d" % int(value)
+	_apply_uniform("max_height", value)
+
+
+func _on_exp_changed(value: float) -> void:
+	_exp_label.text = "Height Curve: %.1f" % value
+	_apply_uniform("height_exp", value)
+
+
+func _on_step_changed(value: float) -> void:
+	_step_label.text = "Height Step: %.1f" % value
+	_apply_uniform("height_step", value)
 
 
 func _on_grid_changed(value: float) -> void:
 	_grid_label.text = "Grid Lines: %.2f" % value
-	if _terrain:
-		for child in _terrain.get_children():
-			if child is MeshInstance3D or child is MultiMeshInstance3D:
-				var mat = child.material_override as ShaderMaterial
-				if mat:
-					mat.set_shader_parameter("grid_line_width", value)
+	_apply_uniform("grid_line_width", value)
+
+
+func _rebuild_terrain() -> void:
+	if _current_approach == "prisms":
+		_on_prisms()
+	elif _current_approach == "flat":
+		_on_flat()
 
 
 func _on_prisms() -> void:
+	_current_approach = "prisms"
 	_terrain_free()
 	var script := load("res://HexGrid/approach_prisms.gd") as GDScript
 	_terrain = Node3D.new()
+	_terrain.set_meta("grid_radius", int(_radius_slider.value))
 	_terrain.set_script(script)
 	add_child(_terrain)
 	_log("Generating hex prisms...")
-	# Log appears after _ready runs
 	call_deferred("_log", "Hex prisms ready.")
 
 
 func _on_flat() -> void:
+	_current_approach = "flat"
 	_terrain_free()
 	var script := load("res://HexGrid/approach_flat.gd") as GDScript
 	_terrain = Node3D.new()
+	_terrain.set_meta("grid_radius", int(_radius_slider.value))
 	_terrain.set_script(script)
 	add_child(_terrain)
 	_log("Generating flat grid...")
