@@ -22,6 +22,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 McpBridge="*uid://dw5bvj1fckgfh"
+MCPRuntimeProbe="*res://addons/godot_mcp/runtime/mcp_runtime_probe.gd"
 
 [debug]
 
