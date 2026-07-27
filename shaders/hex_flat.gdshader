@@ -10,7 +10,6 @@ uniform float water_level = 0.32;
 uniform float grid_line_width : hint_range(0.0, 0.5) = 0.08;
 uniform float height_step : hint_range(0.0, 50.0, 0.1) = 5.0;
 uniform float height_exp : hint_range(0.1, 5.0, 0.1) = 1.0;
-uniform float terrain_max : hint_range(10.0, 500.0) = 200.0;
 
 varying float v_elevation;
 varying float v_biome;
@@ -86,15 +85,10 @@ void vertex() {
 
 	float h;
 	if (v_biome < 1.5) {
-		h = water_level * 100.0;
+		h = water_level * height_step;
 	} else {
-		h = pow(max(e_norm, 0.001), height_exp) * terrain_max;
-		if (height_step > 0.0) {
-			h = floor(h / height_step) * height_step;
-		} else {
-			h = 0.0;
-		}
-		h = max(h, water_level * 100.0 + 0.5);
+		h = pow(max(e_norm, 0.001), height_exp) * height_step;
+		h = max(h, water_level * height_step + 0.001);
 	}
 
 	VERTEX.y = h;

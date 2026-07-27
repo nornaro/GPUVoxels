@@ -4,8 +4,6 @@ const HEX_SIZE: float = 1.1547
 const SUB_HEX_SIZE: float = HEX_SIZE / 3.0
 const SUB_HEX_DIST: float = HEX_SIZE * 0.57735026919
 const WATER_HEIGHT: float = 0.32
-const FIXED_HEIGHT: float = 100.0
-const TERRAIN_MAX_HEIGHT: float = 200.0
 const VERTEX_OFFSET: int = 7
 const TOTAL_SUBS: int = 13
 
@@ -146,6 +144,7 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	_process_orbit()
 	_process_pan()
+	_process_wasd(delta)
 
 	if _tool_flash_timer > 0.0:
 		_tool_flash_timer -= delta
@@ -191,6 +190,33 @@ func _process_pan() -> void:
 	var pan_speed := cam_dist * 0.002
 	cam_pivot = pan_origin - flat_right * diff.x * pan_speed - flat_forward * diff.y * pan_speed
 	_update_camera_transform()
+
+
+func _process_wasd(delta: float) -> void:
+	var cam_basis := camera.global_transform.basis
+	var flat_right := Vector3(cam_basis.x.x, 0.0, cam_basis.x.z)
+	if flat_right.length_squared() > 0.001:
+		flat_right = flat_right.normalized()
+	else:
+		flat_right = Vector3.RIGHT
+	var flat_forward := Vector3(-cam_basis.z.x, 0.0, -cam_basis.z.z)
+	if flat_forward.length_squared() > 0.001:
+		flat_forward = flat_forward.normalized()
+	else:
+		flat_forward = Vector3.FORWARD
+	var move := Vector3.ZERO
+	if Input.is_key_pressed(KEY_W):
+		move += flat_forward
+	if Input.is_key_pressed(KEY_S):
+		move -= flat_forward
+	if Input.is_key_pressed(KEY_A):
+		move -= flat_right
+	if Input.is_key_pressed(KEY_D):
+		move += flat_right
+	if move.length_squared() > 0.001:
+		var speed := cam_dist * 3.0 * delta
+		cam_pivot += move.normalized() * speed
+		_update_camera_transform()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -420,17 +446,14 @@ func _cell_exists(hex: Vector3i) -> bool:
 
 
 func _get_cell_height(cell: HexCellData) -> float:
+	var step_size := _height_slider.value if _height_slider else 5.0
+	var water_h := WATER_HEIGHT * step_size
 	if _is_water_biome(cell.biome):
-		return WATER_HEIGHT * FIXED_HEIGHT
+		return water_h
 	var e_norm := clampf(cell.elevation / 4.0, 0.0, 1.0)
 	var exp_val := _exp_slider.value if _exp_slider else 1.0
-	var step_size := _height_slider.value if _height_slider else 5.0
-	var h := pow(maxf(e_norm, 0.001), exp_val) * TERRAIN_MAX_HEIGHT
-	if step_size > 0.0:
-		h = floor(h / step_size) * step_size
-	else:
-		h = 0.0
-	return maxf(h, WATER_HEIGHT * FIXED_HEIGHT + 0.5)
+	var h := pow(maxf(e_norm, 0.001), exp_val) * step_size
+	return maxf(h, water_h + 0.001)
 
 
 func _is_water_biome(biome: int) -> bool:
@@ -629,7 +652,6 @@ func _apply_uniform(uniform_name: String, value: Variant) -> void:
 func _apply_all_uniforms() -> void:
 	_apply_uniform("height_step", _height_slider.value)
 	_apply_uniform("height_exp", _exp_slider.value)
-	_apply_uniform("terrain_max", TERRAIN_MAX_HEIGHT)
 	_apply_uniform("water_level", WATER_HEIGHT)
 	_apply_uniform("grid_line_width", _grid_slider.value)
 	if chunk_manager:

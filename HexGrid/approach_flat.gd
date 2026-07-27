@@ -175,18 +175,20 @@ func _generate_chunk(key: Vector2i) -> void:
 					avg_e += cell_n2.elevation
 					count += 1
 				avg_e /= count
-				var cn := clampf((avg_e + 1.0) / 5.0, 0.0, 1.0)
+				var cn := clampf(avg_e / 4.0, 0.0, 1.0)
 				corner_attrs.append(Color(cn, biome_norm, 0.0, 1.0))
 			for i in 6:
 				var next := (i + 1) % 6
+				st.set_normal(Vector3(0.0, 1.0, 0.0))
 				st.set_custom(0, center_attr)
 				st.add_vertex(Vector3(cx, 0.0, cz))
+				st.set_normal(Vector3(0.0, 1.0, 0.0))
 				st.set_custom(0, corner_attrs[next])
 				st.add_vertex(Vector3(cx + _corners_x[next], 0.0, cz + _corners_z[next]))
+				st.set_normal(Vector3(0.0, 1.0, 0.0))
 				st.set_custom(0, corner_attrs[i])
 				st.add_vertex(Vector3(cx + _corners_x[i], 0.0, cz + _corners_z[i]))
 
-	st.generate_normals()
 	var mesh := st.commit()
 	var mmi := MeshInstance3D.new()
 	mmi.mesh = mesh
