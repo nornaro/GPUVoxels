@@ -3,7 +3,9 @@ extends Node3D
 const HEX_SIZE: float = 1.1547
 const SUB_HEX_SIZE: float = HEX_SIZE / 3.0
 const SUB_HEX_DIST: float = HEX_SIZE * 0.57735026919
-const WATER_HEIGHT: float = 0.3
+const WATER_HEIGHT: float = 0.32
+const FIXED_HEIGHT: float = 100.0
+const TERRAIN_MAX_HEIGHT: float = 200.0
 const VERTEX_OFFSET: int = 7
 const TOTAL_SUBS: int = 13
 
@@ -47,7 +49,7 @@ var _current_approach: String = ""
 var camera: Camera3D
 var cam_yaw: float = 45.0
 var cam_pitch: float = -55.0
-var cam_dist: float = 300.0
+var cam_dist: float = 500.0
 var cam_pivot: Vector3 = Vector3.ZERO
 var orbiting: bool = false
 var orbit_start: Vector2 = Vector2.ZERO
@@ -84,8 +86,6 @@ var _flatten_target: float = 0.0
 var _flatten_captured: bool = false
 
 var _needs_rebuild: bool = false
-var _needs_save: bool = false
-var _needs_decoration_rebuild: bool = false
 
 var _overlay_mesh_instance: MeshInstance3D
 var _tool_flash_timer: float = 0.0
@@ -106,10 +106,11 @@ var _grid_slider: HSlider
 var _grid_label: Label
 var _radius_slider: HSlider
 var _radius_label: Label
-var _step_slider: HSlider
-var _step_label: Label
 var _exp_slider: HSlider
 var _exp_label: Label
+
+var _cursor_instance: MeshInstance3D
+var _last_cursor_hex: Vector3i = Vector3i(999999, 999999, -1999998)
 
 
 func _ready() -> void:
@@ -126,9 +127,11 @@ func _ready() -> void:
 	overlay_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_overlay_mesh_instance.material_override = overlay_mat
 	add_child(_overlay_mesh_instance)
+	_setup_cursor()
 	_setup_ui()
 	_update_camera_transform()
-	print("Ready. Pick an approach from the menu.")
+	call_deferred("_on_flat")
+	print("Ready.")
 
 
 func _exit_tree() -> void:
@@ -137,7 +140,8 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
-	_handle_camera_input()
+	_process_orbit()
+	_process_pan()
 
 	if _tool_flash_timer > 0.0:
 		_tool_flash_timer -= delta
@@ -145,59 +149,44 @@ func _process(delta: float) -> void:
 			_update_tool_ui()
 
 	if _needs_rebuild:
-		if _terrain:
-			if _current_approach == "flat":
-				_terrain.rebuild_all_chunks()
-			elif _current_approach == "prisms":
-				_terrain.rebuild_all_chunks()
 		_rebuild_overlay_mesh()
 		_needs_rebuild = false
 
-	if tool_mode == 3:
+	if tool_mode == 4:
 		_update_ghost_position()
 	_update_hover_info()
+	_update_cursor()
 
 
-func _handle_camera_input() -> void:
-	if Input.is_action_just_pressed("rmb") and not orbiting and not panning:
-		if tool_mode == 3:
-			_cancel_placement()
-			return
-		orbiting = true
-		orbit_start = get_viewport().get_mouse_position()
-		orbit_yaw_start = cam_yaw
-		orbit_pitch_start = cam_pitch
-	if Input.is_action_just_pressed("lmb") and not panning:
-		var mpos := get_viewport().get_mouse_position()
-		if mpos.x > 220:
-			panning = true
-			pan_start = mpos
-			pan_origin = cam_pivot
-	if Input.is_action_just_released("rmb") and orbiting:
-		orbiting = false
-	if Input.is_action_just_released("lmb") and panning:
-		panning = false
+func _process_orbit() -> void:
+	if not orbiting:
+		return
+	var mpos := get_viewport().get_mouse_position()
+	var diff := mpos - orbit_start
+	cam_yaw = orbit_yaw_start - diff.x * 0.3
+	cam_pitch = clampf(orbit_pitch_start + diff.y * 0.3, -89.0, -5.0)
+	_update_camera_transform()
 
-	if orbiting:
-		var mpos := get_viewport().get_mouse_position()
-		var diff := mpos - orbit_start
-		cam_yaw = orbit_yaw_start - diff.x * 0.3
-		cam_pitch = clampf(orbit_pitch_start + diff.y * 0.3, -89.0, -5.0)
-		_update_camera_transform()
 
-	if panning:
-		var mpos := get_viewport().get_mouse_position()
-		var diff := mpos - pan_start
-		var right := -camera.global_transform.basis.z.cross(Vector3.UP).normalized()
-		var up := Vector3.UP
-		var pan_speed := cam_dist * 0.002
-		cam_pivot = pan_origin - right * diff.x * pan_speed + up * diff.y * pan_speed
-		_update_camera_transform()
-
-	var wheel := Input.get_axis("ZoomIn", "ZoomOut")
-	if wheel != 0.0:
-		cam_dist = clampf(cam_dist * (1.0 - wheel * 0.1), 5.0, 200.0)
-		_update_camera_transform()
+func _process_pan() -> void:
+	if not panning:
+		return
+	var mpos := get_viewport().get_mouse_position()
+	var diff := mpos - pan_start
+	var cam_basis := camera.global_transform.basis
+	var flat_right := Vector3(cam_basis.x.x, 0.0, cam_basis.x.z)
+	if flat_right.length_squared() > 0.001:
+		flat_right = flat_right.normalized()
+	else:
+		flat_right = Vector3.RIGHT
+	var flat_forward := Vector3(-cam_basis.z.x, 0.0, -cam_basis.z.z)
+	if flat_forward.length_squared() > 0.001:
+		flat_forward = flat_forward.normalized()
+	else:
+		flat_forward = Vector3.FORWARD
+	var pan_speed := cam_dist * 0.002
+	cam_pivot = pan_origin - flat_right * diff.x * pan_speed - flat_forward * diff.y * pan_speed
+	_update_camera_transform()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -210,30 +199,52 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
-	if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		var dir := -1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0
-		cam_dist = clampf(cam_dist + dir * cam_dist * 0.08, 5.0, 200.0)
+	if not event.pressed:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			orbiting = false
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			if panning:
+				panning = false
+			painting = false
+		return
+
+	if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		cam_dist = maxf(cam_dist * 0.85, 10.0)
+		_update_camera_transform()
+		return
+	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		cam_dist = minf(cam_dist * 1.18, 5000.0)
 		_update_camera_transform()
 		return
 
-	if event.button_index == MOUSE_BUTTON_LEFT:
-		if not event.pressed:
-			painting = false
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		if tool_mode == 3 or tool_mode == 4:
+			_cancel_placement()
 			return
-		match tool_mode:
-			0:
-				pass
-			1:
-				painting = true
-				_raise_at(event.position)
-			2:
-				painting = true
-				_flatten_at(event.position)
-			3:
-				painting = true
-				_level_at(event.position)
-			4:
-				_place_object_at(event.position)
+		orbiting = true
+		orbit_start = event.position
+		orbit_yaw_start = cam_yaw
+		orbit_pitch_start = cam_pitch
+		return
+
+	if event.button_index == MOUSE_BUTTON_LEFT:
+		if tool_mode == 0:
+			panning = true
+			pan_start = event.position
+			pan_origin = cam_pivot
+		else:
+			match tool_mode:
+				1:
+					painting = true
+					_raise_at(event.position)
+				2:
+					painting = true
+					_flatten_at(event.position)
+				3:
+					painting = true
+					_level_at(event.position)
+				4:
+					_place_object_at(event.position)
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
@@ -265,7 +276,6 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_J:
 			show_resources = not show_resources
 			_needs_rebuild = true
-			_needs_decoration_rebuild = true
 		KEY_ESCAPE:
 			if tool_mode == 4:
 				_cancel_placement()
@@ -322,14 +332,11 @@ func _regenerate_map() -> void:
 	_free_all_object_instances()
 	placed_objects.clear()
 	_needs_rebuild = true
-	_needs_decoration_rebuild = true
-	if _terrain:
+	if _current_approach != "":
 		if _current_approach == "flat":
-			_terrain.cells = cells
-			_terrain.rebuild_all_chunks()
+			_on_flat()
 		elif _current_approach == "prisms":
-			_terrain.cells = cells
-			_terrain.rebuild_all_chunks()
+			_on_prisms()
 
 
 func _quick_save() -> void:
@@ -355,14 +362,11 @@ func _load_map_from(path: String) -> bool:
 	resource_cache = loaded.get("resource_cache", {})
 	_recompute_all_resources()
 	_needs_rebuild = true
-	_needs_decoration_rebuild = true
-	if _terrain:
+	if _current_approach != "":
 		if _current_approach == "flat":
-			_terrain.cells = cells
-			_terrain.rebuild_all_chunks()
+			_on_flat()
 		elif _current_approach == "prisms":
-			_terrain.cells = cells
-			_terrain.rebuild_all_chunks()
+			_on_prisms()
 	return true
 
 
@@ -371,38 +375,56 @@ func _tool_flash(msg: String) -> void:
 	_tool_flash_timer = 1.5
 
 
-func _screen_to_world_3d(screen_pos: Vector2) -> Vector3:
+func _screen_to_world_at_height(screen_pos: Vector2, y: float) -> Vector3:
 	var ray_origin := camera.project_ray_origin(screen_pos)
 	var ray_dir := camera.project_ray_normal(screen_pos)
 	if absf(ray_dir.y) < 0.0001:
 		return Vector3(INF, INF, INF)
-	var t := -ray_origin.y / ray_dir.y
+	var t := (y - ray_origin.y) / ray_dir.y
 	if t < 0:
 		return Vector3(INF, INF, INF)
 	return ray_origin + ray_dir * t
 
 
+func _screen_to_world_3d(screen_pos: Vector2) -> Vector3:
+	return _screen_to_world_at_height(screen_pos, 0.0)
+
+
 func _get_mouse_hex() -> Vector3i:
-	var world_pos := _screen_to_world_3d(get_viewport().get_mouse_position())
+	var screen_pos := get_viewport().get_mouse_position()
+	var world_pos := _screen_to_world_at_height(screen_pos, 0.0)
 	if world_pos.x == INF:
 		return Vector3i(999999, 999999, -1999998)
-	return HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	for _i in 3:
+		var cell := chunk_manager.get_or_create_cell(hex)
+		if not cell:
+			break
+		var height := _get_cell_height(cell)
+		var refined := _screen_to_world_at_height(screen_pos, height)
+		if refined.x == INF:
+			break
+		var new_hex := HexGridMath.world_to_cube_flat_top(refined, HEX_SIZE)
+		if new_hex == hex:
+			break
+		hex = new_hex
+	return hex
 
 
 func _cell_exists(hex: Vector3i) -> bool:
-	return cells.has(hex)
+	return chunk_manager.get_or_create_cell(hex) != null
 
 
 func _get_cell_height(cell: HexCellData) -> float:
 	if _is_water_biome(cell.biome):
-		return WATER_HEIGHT
-	var hex_width: float = HEX_SIZE * 1.73205080757
-	var step: float = ELEVATION_STEPS[elevation_step_idx]
-	if step <= 0.0:
-		return HEX_SIZE
-	var e := maxf(cell.elevation, 0.0)
-	var height := e * hex_width + HEX_SIZE
-	return snappedf(height, step)
+		return WATER_HEIGHT * FIXED_HEIGHT
+	var e_norm := clampf((cell.elevation + 1.0) / 5.0, 0.0, 1.0)
+	var exp_val := _exp_slider.value if _exp_slider else 1.0
+	var step_size := _height_slider.value if _height_slider else 5.0
+	var h := pow(maxf(e_norm, 0.001), exp_val) * TERRAIN_MAX_HEIGHT
+	if step_size > 0.0:
+		h = floor(h / step_size) * step_size
+	return maxf(h, WATER_HEIGHT * FIXED_HEIGHT + 0.5)
 
 
 func _is_water_biome(biome: int) -> bool:
@@ -449,7 +471,7 @@ func _update_tool_ui() -> void:
 	if tool_mode == 4:
 		_info_label.text = "Place: LMB | Cancel: RMB/Esc | Rotate: Z/X | Scale: +/-"
 	else:
-		_info_label.text = "Orbit: RMB | Pan: LMB | Zoom: Scroll | 1-5: Tools | H: Overlay | F: ElevStep | R: Regen"
+		_info_label.text = "Pan: LMB | Orbit: RMB | Zoom: Scroll | 1-5: Tools | H: Overlay | F: ElevStep | R: Regen"
 
 
 func _update_tool_buttons() -> void:
@@ -460,11 +482,7 @@ func _update_tool_buttons() -> void:
 func _update_ghost_position() -> void:
 	if _ghost_instance == null:
 		return
-	var world_pos := _screen_to_world_3d(get_viewport().get_mouse_position())
-	if world_pos.x == INF:
-		_ghost_instance.visible = false
-		return
-	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
 		_ghost_instance.visible = false
 		return
@@ -480,27 +498,34 @@ func _update_ghost_position() -> void:
 func _create_ghost(model_path: String) -> void:
 	_remove_ghost()
 	if not ResourceLoader.exists(model_path):
+		push_warning("Ghost: model not found: %s" % model_path)
 		return
 	var scene: PackedScene = load(model_path)
 	if not scene:
+		push_warning("Ghost: failed to load scene: %s" % model_path)
 		return
 	_ghost_instance = scene.instantiate()
 	_objects_container.add_child(_ghost_instance)
 	_ghost_model_path = model_path
 	_set_node_transparency(_ghost_instance, 0.5)
+	print("Ghost created: %s (children: %d)" % [model_path.get_file(), _ghost_instance.get_child_count()])
 
 
 func _set_node_transparency(node: Node, alpha: float) -> void:
 	for child in node.get_children():
 		if child is MeshInstance3D:
 			var mi: MeshInstance3D = child
-			for i in mi.get_surface_override_material_count():
+			var surf_count := 0
+			if mi.mesh:
+				surf_count = mi.mesh.get_surface_count()
+			for i in surf_count:
 				var mat = mi.get_surface_override_material(i)
 				if mat == null and mi.mesh != null:
 					mat = mi.mesh.surface_get_material(i)
-				if mat is StandardMaterial3D:
-					var new_mat: StandardMaterial3D = mat.duplicate() as StandardMaterial3D
+				if mat is BaseMaterial3D:
+					var new_mat: BaseMaterial3D = mat.duplicate() as BaseMaterial3D
 					new_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					new_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 					var col := new_mat.albedo_color
 					col.a = alpha
 					new_mat.albedo_color = col
@@ -526,9 +551,8 @@ func _cancel_placement() -> void:
 # ============================================================================
 # TERRAIN EDITING
 # ============================================================================
-func _raise_at(screen_pos: Vector2) -> void:
-	var world_pos := _screen_to_world_3d(screen_pos)
-	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+func _raise_at(_screen_pos: Vector2) -> void:
+	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
 		return
 	var cell: HexCellData = cells[hex]
@@ -544,9 +568,8 @@ func _raise_at(screen_pos: Vector2) -> void:
 	_rebuild_chunk_for_hex(hex)
 
 
-func _flatten_at(screen_pos: Vector2) -> void:
-	var world_pos := _screen_to_world_3d(screen_pos)
-	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+func _flatten_at(_screen_pos: Vector2) -> void:
+	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
 		return
 	var cell: HexCellData = cells[hex]
@@ -558,9 +581,8 @@ func _flatten_at(screen_pos: Vector2) -> void:
 	_rebuild_chunk_for_hex(hex)
 
 
-func _level_at(screen_pos: Vector2) -> void:
-	var world_pos := _screen_to_world_3d(screen_pos)
-	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+func _level_at(_screen_pos: Vector2) -> void:
+	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
 		return
 	if _level_target == Vector3i(999999, 999999, -1999998):
@@ -568,6 +590,9 @@ func _level_at(screen_pos: Vector2) -> void:
 		_tool_flash("Level target set: (%d,%d,%d)" % [hex.x, hex.y, hex.z])
 		return
 	if hex == _level_target:
+		return
+	if not cells.has(_level_target):
+		_level_target = Vector3i(999999, 999999, -1999998)
 		return
 	var target_cell: HexCellData = cells[_level_target]
 	var cell: HexCellData = cells[hex]
@@ -577,27 +602,51 @@ func _level_at(screen_pos: Vector2) -> void:
 
 
 func _rebuild_chunk_for_hex(hex: Vector3i) -> void:
+	if _terrain and _terrain.has_method("rebuild_chunk_for_hex"):
+		_terrain.rebuild_chunk_for_hex(hex)
+
+
+func _apply_uniform(uniform_name: String, value: Variant) -> void:
 	if not _terrain:
 		return
-	var chunk_key := Vector2i(floori(float(hex.x) / 32), floori(float(hex.y) / 32))
-	if _current_approach == "flat" and _terrain.has_method("rebuild_chunk"):
-		_terrain.rebuild_chunk(chunk_key)
-	elif _current_approach == "prisms" and _terrain.has_method("rebuild_chunk"):
-		_terrain.rebuild_chunk(chunk_key)
+	for child in _terrain.get_children():
+		if child is MeshInstance3D:
+			var mat = child.material_override
+			if mat is ShaderMaterial:
+				mat.set_shader_parameter(uniform_name, value)
+		elif child is MultiMeshInstance3D:
+			var mat = child.material_override
+			if mat is ShaderMaterial:
+				mat.set_shader_parameter(uniform_name, value)
+
+
+func _apply_all_uniforms() -> void:
+	_apply_uniform("height_step", _height_slider.value)
+	_apply_uniform("height_exp", _exp_slider.value)
+	_apply_uniform("terrain_max", TERRAIN_MAX_HEIGHT)
+	_apply_uniform("water_level", WATER_HEIGHT)
+	_apply_uniform("grid_line_width", _grid_slider.value)
+	if chunk_manager:
+		_apply_uniform("noise_freq", chunk_manager.noise_freq)
+		_apply_uniform("noise_seed", float(chunk_manager.noise_seed))
+		_apply_uniform("noise_octaves", chunk_manager.fractal_octaves)
+		_apply_uniform("noise_lacunarity", chunk_manager.fractal_lacunarity)
+		_apply_uniform("noise_gain", chunk_manager.fractal_gain)
 
 
 # ============================================================================
 # BUILDING / PLACEMENT
 # ============================================================================
-func _place_object_at(screen_pos: Vector2) -> void:
+func _place_object_at(_screen_pos: Vector2) -> void:
 	if selected_model_path.is_empty():
 		_tool_flash("No model selected")
 		return
-	var world_pos := _screen_to_world_3d(screen_pos)
-	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
+	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
+		print("Place: cell %s does not exist" % hex)
 		return
 	_place_object_on_hex(hex, selected_model_path, _placement_rotation, _placement_scale)
+	print("Place: %s at %s" % [selected_model_path.get_file(), hex])
 
 
 func _place_object_on_hex(hex: Vector3i, model_path: String, rot: float = 0.0, scl: float = 1.0) -> void:
@@ -617,7 +666,6 @@ func _place_object_on_hex(hex: Vector3i, model_path: String, rot: float = 0.0, s
 	instance.rotation_degrees.y = rot
 	instance.scale = Vector3(scl, scl, scl)
 	_placed_object_instances[hex] = instance
-	_needs_save = true
 
 
 func _remove_object_at(hex: Vector3i) -> void:
@@ -645,32 +693,6 @@ func _rebuild_object_instances() -> void:
 			_place_object_on_hex(hex, obj_data)
 		elif obj_data is Dictionary:
 			_place_object_on_hex(hex, obj_data["path"], obj_data.get("rotation", 0.0), obj_data.get("scale", 1.0))
-
-
-func _update_object_instances() -> void:
-	for hex in placed_objects.keys():
-		var obj_data: Variant = placed_objects[hex]
-		var model_path: String
-		var rot: float = 0.0
-		var scl: float = 1.0
-		if obj_data is String:
-			model_path = obj_data
-		elif obj_data is Dictionary:
-			model_path = obj_data["path"]
-			rot = obj_data.get("rotation", 0.0)
-			scl = obj_data.get("scale", 1.0)
-		else:
-			continue
-		if not _placed_object_instances.has(hex):
-			_place_object_on_hex(hex, model_path, rot, scl)
-			continue
-		var cell: HexCellData = cells[hex]
-		var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-		var height := _get_cell_height(cell)
-		var inst: Node3D = _placed_object_instances[hex]
-		inst.position = Vector3(hpos.x, height, hpos.z)
-		inst.rotation_degrees.y = rot
-		inst.scale = Vector3(scl, scl, scl)
 
 
 # ============================================================================
@@ -797,17 +819,17 @@ func _rebuild_decorations() -> void:
 			var max_horiz := maxf(aabb.size.x, aabb.size.z)
 			var scl: float = SUB_HEX_SIZE * 0.925 / maxf(max_horiz, 0.01)
 			var sx: float = -scl if mirror_x else scl
-			var basis: Basis = Basis()
-			basis = basis.rotated(Vector3.UP, deg_to_rad(rot_step))
-			basis = basis.scaled(Vector3(sx, scl, scl))
+			var mat_basis := Basis()
+			mat_basis = mat_basis.rotated(Vector3.UP, deg_to_rad(rot_step))
+			mat_basis = mat_basis.scaled(Vector3(sx, scl, scl))
 			var center_xz := Vector3(center.x, 0.0, center.z)
-			var rotated_center := basis * center_xz
+			var rotated_center := mat_basis * center_xz
 			var origin := Vector3(
 				hpos.x + local.x - rotated_center.x,
 				height - scl * aabb.position.y,
 				hpos.z + local.y - rotated_center.z
 			)
-			model_instances[model_path].append(Transform3D(basis, origin))
+			model_instances[model_path].append(Transform3D(mat_basis, origin))
 	for model_path in model_instances:
 		var mesh := _load_decoration_mesh(model_path)
 		if not mesh:
@@ -833,15 +855,6 @@ func _free_all_decorations() -> void:
 	_decoration_multimeshes.clear()
 
 
-func _get_resource_counts(hex: Vector3i) -> Dictionary:
-	var counts := {}
-	if resource_cache.has(hex):
-		for res in resource_cache[hex]:
-			var rtype: String = res["type"]
-			counts[rtype] = counts.get(rtype, 0) + 1
-	return counts
-
-
 func _get_resource_color(rtype: String) -> Color:
 	match rtype:
 		"tree": return Color(0.2, 0.7, 0.2, 0.5)
@@ -863,31 +876,6 @@ func _get_sub_hex_local_pos(_parent_hex: Vector3i, sub_idx: int) -> Vector2:
 	else:
 		var angle := deg_to_rad(30.0 + 60.0 * float(sub_idx - 1))
 		return Vector2(cos(angle), sin(angle)) * SUB_HEX_DIST
-
-
-func _vertex_key(hex: Vector3i, vi: int) -> int:
-	var dirs: Array = VERTEX_NEIGHBORS[vi]
-	var h1 := hex
-	var h2 := hex + HexGridMath.cube_direction(dirs[0])
-	var h3 := hex + HexGridMath.cube_direction(dirs[1])
-	var hx: int = mini(mini(h1.x, h2.x), h3.x)
-	var hy: int = mini(mini(h1.y, h2.y), h3.y)
-	var hz: int = mini(mini(h1.z, h2.z), h3.z)
-	return hx * 1000003 + hy * 1009 + hz
-
-
-func _find_closest_sub_hex(hex: Vector3i, world_pos: Vector3) -> int:
-	var hex_world := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-	var local := Vector2(world_pos.x - hex_world.x, world_pos.z - hex_world.z)
-	var best_sub := 0
-	var best_dist := INF
-	for i in TOTAL_SUBS:
-		var sub_pos := _get_sub_hex_local_pos(hex, i)
-		var d := local.distance_to(sub_pos)
-		if d < best_dist:
-			best_dist = d
-			best_sub = i
-	return best_sub
 
 
 # ============================================================================
@@ -972,6 +960,55 @@ func _add_flat_hex_wireframe(imm: ImmediateMesh, center: Vector3, size: float, c
 		imm.surface_add_vertex(c)
 		imm.surface_set_color(col)
 		imm.surface_add_vertex(d)
+
+
+# ============================================================================
+# CURSOR HIGHLIGHT
+# ============================================================================
+func _setup_cursor() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n_up := Vector3(0, 1, 0)
+	var corners: Array[Vector3] = []
+	for i in 6:
+		var angle := deg_to_rad(60.0 * float(i))
+		corners.append(Vector3(cos(angle) * HEX_SIZE, 0.0, sin(angle) * HEX_SIZE))
+	for i in 6:
+		var next := (i + 1) % 6
+		st.set_normal(n_up)
+		st.add_vertex(Vector3(0, 0.02, 0))
+		st.set_normal(n_up)
+		st.add_vertex(corners[next] + Vector3(0, 0.02, 0))
+		st.set_normal(n_up)
+		st.add_vertex(corners[i] + Vector3(0, 0.02, 0))
+	var mesh := st.commit()
+	_cursor_instance = MeshInstance3D.new()
+	_cursor_instance.mesh = mesh
+	var cursor_mat := StandardMaterial3D.new()
+	cursor_mat.albedo_color = Color(1.0, 1.0, 0.3, 0.25)
+	cursor_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	cursor_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	cursor_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cursor_mat.no_depth_test = true
+	_cursor_instance.material_override = cursor_mat
+	_cursor_instance.visible = false
+	add_child(_cursor_instance)
+
+
+func _update_cursor() -> void:
+	var hex := _get_mouse_hex()
+	_last_cursor_hex = hex
+	if hex.x == 999999:
+		_cursor_instance.visible = false
+		return
+	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var cell := chunk_manager.get_or_create_cell(hex)
+	if cell:
+		var height := _get_cell_height(cell)
+		_cursor_instance.position = Vector3(hpos.x, height + 0.15, hpos.z)
+	else:
+		_cursor_instance.position = Vector3(hpos.x, 0.15, hpos.z)
+	_cursor_instance.visible = true
 
 
 # ============================================================================
@@ -1076,7 +1113,7 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(sep2)
 
 	_radius_label = Label.new()
-	_radius_label.text = "Radius: 100"
+	_radius_label.text = "Radius: 300"
 	_radius_label.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(_radius_label)
 
@@ -1084,7 +1121,7 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	_radius_slider.min_value = 10.0
 	_radius_slider.max_value = 10000.0
 	_radius_slider.step = 10.0
-	_radius_slider.value = 100.0
+	_radius_slider.value = 300.0
 	_radius_slider.custom_minimum_size = Vector2(180, 0)
 	_radius_slider.value_changed.connect(_on_radius_changed)
 	vbox.add_child(_radius_slider)
@@ -1093,15 +1130,15 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(sep_h)
 
 	_height_label = Label.new()
-	_height_label.text = "Height: 100"
+	_height_label.text = "Step: 5"
 	_height_label.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(_height_label)
 
 	_height_slider = HSlider.new()
 	_height_slider.min_value = 0.0
-	_height_slider.max_value = 400.0
-	_height_slider.step = 1.0
-	_height_slider.value = 100.0
+	_height_slider.max_value = 50.0
+	_height_slider.step = 0.5
+	_height_slider.value = 5.0
 	_height_slider.custom_minimum_size = Vector2(180, 0)
 	_height_slider.value_changed.connect(_on_height_changed)
 	vbox.add_child(_height_slider)
@@ -1110,7 +1147,7 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(sep_exp)
 
 	_exp_label = Label.new()
-	_exp_label.text = "Height Curve: 1.0"
+	_exp_label.text = "Curve: 1.0"
 	_exp_label.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(_exp_label)
 
@@ -1122,23 +1159,6 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	_exp_slider.custom_minimum_size = Vector2(180, 0)
 	_exp_slider.value_changed.connect(_on_exp_changed)
 	vbox.add_child(_exp_slider)
-
-	var sep_s := HSeparator.new()
-	vbox.add_child(sep_s)
-
-	_step_label = Label.new()
-	_step_label.text = "Height Step: 0"
-	_step_label.add_theme_font_size_override("font_size", 12)
-	vbox.add_child(_step_label)
-
-	_step_slider = HSlider.new()
-	_step_slider.min_value = 0.0
-	_step_slider.max_value = 20.0
-	_step_slider.step = 0.5
-	_step_slider.value = 0.0
-	_step_slider.custom_minimum_size = Vector2(180, 0)
-	_step_slider.value_changed.connect(_on_step_changed)
-	vbox.add_child(_step_slider)
 
 	var sep_grid := HSeparator.new()
 	vbox.add_child(sep_grid)
@@ -1288,6 +1308,7 @@ func _on_palette_item_selected(path: String) -> void:
 	_set_tool(4)
 	_create_ghost(path)
 	_tool_flash("Select: " + path.get_file().get_basename())
+	print("Palette selected: tool_mode=%d path=%s" % [tool_mode, path])
 
 
 # ============================================================================
@@ -1300,19 +1321,18 @@ func _on_radius_changed(value: float) -> void:
 
 
 func _on_height_changed(value: float) -> void:
-	_height_label.text = "Height: %d" % int(value)
+	_height_label.text = "Step: %.1f" % value
+	_apply_uniform("height_step", value)
 
 
 func _on_exp_changed(value: float) -> void:
-	_exp_label.text = "Height Curve: %.1f" % value
-
-
-func _on_step_changed(value: float) -> void:
-	_step_label.text = "Height Step: %.1f" % value
+	_exp_label.text = "Curve: %.1f" % value
+	_apply_uniform("height_exp", value)
 
 
 func _on_grid_changed(value: float) -> void:
 	_grid_label.text = "Grid Lines: %.2f" % value
+	_apply_uniform("grid_line_width", value)
 
 
 func _rebuild_terrain() -> void:
@@ -1328,12 +1348,13 @@ func _on_prisms() -> void:
 	var script := load("res://HexGrid/approach_prisms.gd") as GDScript
 	_terrain = Node3D.new()
 	_terrain.set_meta("grid_radius", int(_radius_slider.value))
-	_terrain.set_meta("cells", cells)
-	_terrain.set_meta("chunk_manager", chunk_manager)
 	_terrain.set_script(script)
 	add_child(_terrain)
+	move_child(_objects_container, get_child_count() - 1)
+	move_child(_overlay_mesh_instance, get_child_count() - 1)
+	move_child(_cursor_instance, get_child_count() - 1)
 	_label.text = "Generating hex prisms..."
-	call_deferred("_label_done", "Hex prisms ready.")
+	call_deferred("_on_terrain_ready", "Hex prisms ready.")
 
 
 func _on_flat() -> void:
@@ -1342,16 +1363,18 @@ func _on_flat() -> void:
 	var script := load("res://HexGrid/approach_flat.gd") as GDScript
 	_terrain = Node3D.new()
 	_terrain.set_meta("grid_radius", int(_radius_slider.value))
-	_terrain.set_meta("cells", cells)
-	_terrain.set_meta("chunk_manager", chunk_manager)
 	_terrain.set_script(script)
 	add_child(_terrain)
+	move_child(_objects_container, get_child_count() - 1)
+	move_child(_overlay_mesh_instance, get_child_count() - 1)
+	move_child(_cursor_instance, get_child_count() - 1)
 	_label.text = "Generating flat grid..."
-	call_deferred("_label_done", "Flat grid ready.")
+	call_deferred("_on_terrain_ready", "Flat grid ready.")
 
 
-func _label_done(msg: String) -> void:
+func _on_terrain_ready(msg: String) -> void:
 	_label.text = msg
+	_apply_all_uniforms()
 
 
 func _terrain_free() -> void:
@@ -1377,7 +1400,7 @@ func _setup_camera() -> void:
 	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
 	camera.fov = 60.0
 	camera.near = 0.1
-	camera.far = 2000.0
+	camera.far = 5000.0
 	add_child(camera)
 
 

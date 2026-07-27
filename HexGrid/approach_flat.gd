@@ -4,59 +4,60 @@ const HEX_SIZE: float = 1.1547
 const HEX_SIZE_X15: float = 1.73205
 const HEX_SIZE_SQRT3: float = 2.0
 const CHUNK_HEXES: int = 32
-const VIEW_CHUNKS: int = 4
-const WATER_LEVEL: float = 0.3
+const VIEW_CHUNKS: int = 6
+const CUBE_DIRECTIONS: Array = [
+	Vector3i(1, 0, -1), Vector3i(1, -1, 0), Vector3i(0, -1, 1),
+	Vector3i(-1, 0, 1), Vector3i(-1, 1, 0), Vector3i(0, 1, -1),
+]
+const VERTEX_NEIGHBORS: Array = [
+	[0, 1], [0, 5], [5, 4], [4, 3], [3, 2], [2, 1],
+]
 
 var grid_radius: int = 100
-var cells: Dictionary = {}
+var _shared_mat: ShaderMaterial
+var _corners_x: PackedFloat64Array
+var _corners_z: PackedFloat64Array
 var _chunks := {}
 var _last_cam_chunk := Vector2i(999999, 999999)
-var _shared_mat: StandardMaterial3D
-
-var chunk_manager: ChunkManager
 
 func _ready() -> void:
 	grid_radius = get_meta("grid_radius", 100)
-	cells = get_meta("cells", {})
-	chunk_manager = get_meta("chunk_manager", null)
-	_shared_mat = StandardMaterial3D.new()
-	_shared_mat.vertex_color_use_as_albedo = true
-	_shared_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_generate_initial_cells()
+	_shared_mat = ShaderMaterial.new()
+	_shared_mat.shader = load("res://shaders/hex_flat.gdshader")
+	_corners_x = PackedFloat64Array()
+	_corners_z = PackedFloat64Array()
+	for i in 6:
+		var angle := deg_to_rad(60.0 * float(i))
+		_corners_x.append(cos(angle) * HEX_SIZE)
+		_corners_z.append(sin(angle) * HEX_SIZE)
 	var t := Time.get_ticks_msec()
 	_update_chunks(Vector2i(999999, 999999), true)
 	var elapsed := (Time.get_ticks_msec() - t) / 1000.0
 	print("[Approach B] Done in %.2fs" % elapsed)
 
 
-func _generate_initial_cells() -> void:
-	if not chunk_manager or not chunk_manager.is_initialized():
-		return
-	var cam := get_viewport().get_camera_3d()
-	var center_hex := Vector3i.ZERO
-	if cam:
-		center_hex = HexGridMath.world_to_cube_flat_top(cam.global_position, HEX_SIZE)
-	var chunk_radius := mini(VIEW_CHUNKS + 1, 6)
-	var batch: Array[Vector2i] = []
-	for dq in range(-chunk_radius, chunk_radius + 1):
-		for dr in range(-chunk_radius, chunk_radius + 1):
-			var ck := Vector2i(center_hex.x / 10 + dq, center_hex.y / 10 + dr)
-			if not chunk_manager._loaded_chunk_origins.has(ck):
-				batch.append(ck)
-	if not batch.is_empty():
-		chunk_manager.generate_batch(batch)
-
-
 func _process(_delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if not cam:
 		return
-	var cq := floori(cam.global_position.x / (HEX_SIZE_X15 * CHUNK_HEXES))
-	var cr := floori(cam.global_position.z / (HEX_SIZE_SQRT3 * CHUNK_HEXES))
+	var qf := cam.global_position.x / HEX_SIZE_X15
+	var rf := cam.global_position.z / HEX_SIZE_SQRT3 - qf * 0.5
+	var cq := floori(qf / CHUNK_HEXES)
+	var cr := floori(rf / CHUNK_HEXES)
 	var cc := Vector2i(cq, cr)
 	if cc != _last_cam_chunk:
 		_last_cam_chunk = cc
 		_update_chunks(cc, false)
+
+
+func rebuild_chunk_for_hex(hex: Vector3i) -> void:
+	var cq := floori(float(hex.x) / CHUNK_HEXES)
+	var cr := floori(float(hex.y) / CHUNK_HEXES)
+	var key := Vector2i(cq, cr)
+	if key in _chunks:
+		_chunks[key].queue_free()
+		_chunks.erase(key)
+	_generate_chunk(key)
 
 
 func _update_chunks(cam_chunk: Vector2i, initial: bool) -> void:
@@ -81,23 +82,6 @@ func _update_chunks(cam_chunk: Vector2i, initial: bool) -> void:
 		print("[Approach B] %d chunks" % _chunks.size())
 
 
-func rebuild_chunk(chunk_key: Vector2i) -> void:
-	if chunk_key in _chunks:
-		_chunks[chunk_key].queue_free()
-		_chunks.erase(chunk_key)
-	_generate_chunk(chunk_key)
-
-
-func rebuild_all_chunks() -> void:
-	var keys: Array[Vector2i] = []
-	for key in _chunks:
-		keys.append(key)
-	for key in keys:
-		_chunks[key].queue_free()
-		_chunks.erase(key)
-	_last_cam_chunk = Vector2i(999999, 999999)
-
-
 func _chunk_has_hexes(key: Vector2i) -> bool:
 	var q_lo := key.x * CHUNK_HEXES
 	var q_hi := q_lo + CHUNK_HEXES - 1
@@ -110,17 +94,40 @@ func _chunk_has_hexes(key: Vector2i) -> bool:
 	return false
 
 
+func _batch_generate_cells(q_lo: int, q_hi: int, r_lo: int, r_max: int, cells: Dictionary, chunk_mgr) -> void:
+	if not chunk_mgr or not chunk_mgr.is_initialized():
+		return
+	var cm: ChunkManager = chunk_mgr
+	var seen: Dictionary = {}
+	var batch: Array = []
+	for q in range(q_lo, q_hi + 1):
+		for ri in range(r_lo, r_max + 1):
+			var hex := Vector3i(q, ri, -q - ri)
+			if not cells.has(hex):
+				var ck := Vector2i(floori(float(q) / cm.CHUNK_SIZE), floori(float(ri) / cm.CHUNK_SIZE))
+				if not seen.has(ck):
+					seen[ck] = true
+					batch.append(ck)
+	if not batch.is_empty():
+		cm.generate_batch(batch)
+
+
 func _generate_chunk(key: Vector2i) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var n_up := Vector3(0, 1, 0)
+	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
 	var q_lo := maxi(key.x * CHUNK_HEXES, -grid_radius)
 	var q_hi := mini(q_lo + CHUNK_HEXES - 1, grid_radius)
 	if key.x * CHUNK_HEXES < -grid_radius:
 		q_lo = -grid_radius
 		q_hi = mini(q_lo + CHUNK_HEXES - 1, grid_radius)
 
-	var has_cells := false
+	var cells: Dictionary = get_parent().get("cells") if get_parent() else {}
+	var chunk_mgr = get_parent().get("chunk_manager") if get_parent() else null
+
+	var r_min_global := maxi(-grid_radius, key.y * CHUNK_HEXES)
+	var r_max_global := mini(grid_radius, key.y * CHUNK_HEXES + CHUNK_HEXES - 1)
+	_batch_generate_cells(q_lo, q_hi, r_min_global, r_max_global, cells, chunk_mgr)
 
 	for q in range(q_lo, q_hi + 1):
 		var qf := float(q)
@@ -131,35 +138,55 @@ func _generate_chunk(key: Vector2i) -> void:
 		for ri in range(r_min, r_max + 1):
 			var cz := HEX_SIZE_SQRT3 * float(ri) + z_off
 			var hex := Vector3i(q, ri, -q - ri)
-			var cell: HexCellData = cells.get(hex, null)
-			if cell == null:
-				continue
-			has_cells = true
-			var height: float = _get_cell_height(cell)
-			var col := cell.color
-
-			var corners_x: Array[float] = []
-			var corners_z: Array[float] = []
-			for i in 6:
-				var angle := deg_to_rad(60.0 * float(i))
-				corners_x.append(cos(angle) * HEX_SIZE)
-				corners_z.append(sin(angle) * HEX_SIZE)
-
+			var elevation := 0.0
+			var biome := 0
+			if cells.has(hex):
+				var cell: HexCellData = cells[hex]
+				elevation = cell.elevation
+				biome = cell.biome
+			elif chunk_mgr and chunk_mgr.is_initialized():
+				var cell: HexCellData = chunk_mgr.get_or_create_cell(hex)
+				if cell:
+					elevation = cell.elevation
+					biome = cell.biome
+			var e_norm := clampf((elevation + 1.0) / 5.0, 0.0, 1.0)
+			var biome_norm := float(biome) / 10.0
+			var center_attr := Color(e_norm, biome_norm, 0.0, 1.0)
+			var corner_attrs: Array[Color] = []
+			for ci in 6:
+				var n1: Vector3i = hex + CUBE_DIRECTIONS[VERTEX_NEIGHBORS[ci][0]] as Vector3i
+				var n2: Vector3i = hex + CUBE_DIRECTIONS[VERTEX_NEIGHBORS[ci][1]] as Vector3i
+				var avg_e := elevation
+				var count := 1
+				var cell_n1: HexCellData = null
+				var cell_n2: HexCellData = null
+				if cells.has(n1):
+					cell_n1 = cells[n1]
+				elif chunk_mgr and chunk_mgr.is_initialized():
+					cell_n1 = chunk_mgr.get_or_create_cell(n1)
+				if cell_n1:
+					avg_e += cell_n1.elevation
+					count += 1
+				if cells.has(n2):
+					cell_n2 = cells[n2]
+				elif chunk_mgr and chunk_mgr.is_initialized():
+					cell_n2 = chunk_mgr.get_or_create_cell(n2)
+				if cell_n2:
+					avg_e += cell_n2.elevation
+					count += 1
+				avg_e /= count
+				var cn := clampf((avg_e + 1.0) / 5.0, 0.0, 1.0)
+				corner_attrs.append(Color(cn, biome_norm, 0.0, 1.0))
 			for i in 6:
 				var next := (i + 1) % 6
-				st.set_color(col)
-				st.set_normal(n_up)
-				st.add_vertex(Vector3(cx, height, cz))
-				st.set_color(col)
-				st.set_normal(n_up)
-				st.add_vertex(Vector3(cx + corners_x[next], height, cz + corners_z[next]))
-				st.set_color(col)
-				st.set_normal(n_up)
-				st.add_vertex(Vector3(cx + corners_x[i], height, cz + corners_z[i]))
+				st.set_custom(0, center_attr)
+				st.add_vertex(Vector3(cx, 0.0, cz))
+				st.set_custom(0, corner_attrs[next])
+				st.add_vertex(Vector3(cx + _corners_x[next], 0.0, cz + _corners_z[next]))
+				st.set_custom(0, corner_attrs[i])
+				st.add_vertex(Vector3(cx + _corners_x[i], 0.0, cz + _corners_z[i]))
 
-	if not has_cells:
-		return
-
+	st.generate_normals()
 	var mesh := st.commit()
 	var mmi := MeshInstance3D.new()
 	mmi.mesh = mesh
@@ -167,15 +194,3 @@ func _generate_chunk(key: Vector2i) -> void:
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	add_child(mmi)
 	_chunks[key] = mmi
-
-
-func _get_cell_height(cell: HexCellData) -> float:
-	if _is_water_biome(cell.biome):
-		return WATER_LEVEL
-	var hex_width: float = HEX_SIZE * 1.73205080757
-	var e := maxf(cell.elevation, 0.0)
-	return e * hex_width + HEX_SIZE
-
-
-func _is_water_biome(biome: int) -> bool:
-	return biome == 0 or biome == 1

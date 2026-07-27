@@ -131,6 +131,35 @@ func is_initialized() -> bool:
 	return _noise != null
 
 
+func get_or_create_cell(hex: Vector3i) -> HexCellData:
+	if cells.has(hex):
+		return cells[hex]
+	if not is_initialized():
+		return null
+	var nval: float = _noise.get_noise_2d(float(hex.x), float(hex.y))
+	var biome: int = _classify_biome(nval)
+	var elevation: float = _remap_elevation(biome, nval)
+	var cell := HexCellData.new(hex, biome, elevation)
+	cell.color = BIOME_COLORS[clampi(biome, 0, BIOME_COLORS.size() - 1)]
+	cell.sub_heights[0] = elevation
+	const INNER_DIST: float = HEX_SIZE * 0.57735026919
+	const OUTER_DIST: float = HEX_SIZE
+	for i in 6:
+		var angle: float = deg_to_rad(30.0 + 60.0 * float(i))
+		var sub_q: float = float(hex.x) + cos(angle) * INNER_DIST
+		var sub_r: float = float(hex.y) + sin(angle) * INNER_DIST
+		var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
+		cell.sub_heights[i + 1] = elevation + detail
+	for i in 6:
+		var angle: float = deg_to_rad(60.0 * float(i))
+		var sub_q: float = float(hex.x) + cos(angle) * OUTER_DIST
+		var sub_r: float = float(hex.y) + sin(angle) * OUTER_DIST
+		var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
+		cell.sub_heights[i + 7] = elevation + detail
+	cells[hex] = cell
+	return cell
+
+
 func generate_batch(batch: Array) -> void:
 	if batch.is_empty() or not is_initialized():
 		return
@@ -143,88 +172,7 @@ func generate_batch(batch: Array) -> void:
 
 
 func _generate_batch_gpu(batch: Array, bs: int) -> void:
-	var rd := RenderingServer.get_rendering_device()
-	if rd == null:
-		_generate_batch_cpu(batch, bs)
-		return
-
-	var origins: PackedInt32Array = PackedInt32Array()
-	var valid_batch: Array = []
-	for ci in bs:
-		var ck: Vector2i = batch[ci]
-		if _loaded_chunk_origins.has(ck):
-			continue
-		_loaded_chunk_origins[ck] = true
-		origins.append(ck.x)
-		origins.append(ck.y)
-		valid_batch.append(ck)
-
-	if valid_batch.is_empty():
-		return
-
-	var actual_bs := valid_batch.size()
-	var params := PackedFloat32Array([
-		float(CHUNK_SIZE), float(actual_bs),
-		noise_freq, float(noise_seed),
-		detail_freq, float(detail_seed),
-		float(fractal_octaves), fractal_lacunarity, fractal_gain,
-		float(detail_octaves), detail_lacunarity, detail_gain,
-		warp_strength, moisture_freq, float(moisture_seed),
-		0.0,
-	])
-	var params_buf := rd.storage_buffer_create(params.size() * 4, params.to_byte_array())
-	var origins_buf := rd.storage_buffer_create(origins.size() * 4, origins.to_byte_array())
-	var total_cells := actual_bs * CELLS_PER_CHUNK
-	var output_buf := rd.storage_buffer_create(total_cells * FLOATS_PER_CELL * 4)
-
-	var u_params := RDUniform.new()
-	u_params.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_params.binding = 0
-	u_params.add_id(params_buf)
-	var u_origins := RDUniform.new()
-	u_origins.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_origins.binding = 1
-	u_origins.add_id(origins_buf)
-	var u_output := RDUniform.new()
-	u_output.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_output.binding = 2
-	u_output.add_id(output_buf)
-
-	var uniform_set := rd.uniform_set_create([u_params, u_origins, u_output], _gpu_shader, 0)
-	var compute_list := rd.compute_list_begin()
-	rd.compute_list_bind_compute_pipeline(compute_list, _gpu_pipeline)
-	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
-	rd.compute_list_dispatch(compute_list, 1, 1, actual_bs)
-	rd.compute_list_end()
-	rd.submit()
-	rd.sync()
-
-	var output_data := rd.buffer_get_data(output_buf)
-	var floats := output_data.to_float32_array()
-
-	for ci in actual_bs:
-		var ck: Vector2i = valid_batch[ci]
-		var base_q: int = ck.x * CHUNK_SIZE
-		var base_r: int = ck.y * CHUNK_SIZE
-		for cx in CHUNK_SIZE:
-			for cy in CHUNK_SIZE:
-				var cell_idx: int = cx * CHUNK_SIZE + cy
-				var idx: int = (ci * CELLS_PER_CHUNK + cell_idx) * FLOATS_PER_CELL
-				var elevation: float = floats[idx]
-				var biome: int = int(floats[idx + 1])
-				var q: int = base_q + cx
-				var r: int = base_r + cy
-				var hex := Vector3i(q, r, -q - r)
-				var cell := HexCellData.new(hex, biome, elevation)
-				cell.color = BIOME_COLORS[clampi(biome, 0, BIOME_COLORS.size() - 1)]
-				for si in TOTAL_SUBS:
-					cell.sub_heights[si] = floats[idx + 2 + si]
-				cells[hex] = cell
-
-	rd.free_rid(params_buf)
-	rd.free_rid(origins_buf)
-	rd.free_rid(output_buf)
-	rd.free_rid(uniform_set)
+	_generate_batch_cpu(batch, bs)
 
 
 func _generate_batch_cpu(batch: Array, bs: int) -> void:
@@ -285,15 +233,15 @@ func _remap_elevation(biome: int, nval: float) -> float:
 		BIOME_DEEP_WATER:
 			return remap(nval, -1.0, -0.3, 0.1, 0.3)
 		BIOME_WATER:
-			return remap(nval, -0.3, -0.1, 0.15, 0.5)
+			return remap(nval, -0.3, -0.1, 0.3, 0.5)
 		BIOME_BEACH:
-			return remap(nval, -0.1, 0.1, 0.4, 0.7)
+			return remap(nval, -0.1, 0.1, 0.5, 0.7)
 		BIOME_GRASS:
 			return remap(nval, 0.1, 0.4, 0.7, 1.8)
 		BIOME_DIRT:
-			return remap(nval, 0.4, 0.7, 1.4, 2.8)
+			return remap(nval, 0.4, 0.7, 1.8, 2.8)
 		BIOME_STONE:
-			return remap(nval, 0.7, 1.4, 2.2, 4.0)
+			return remap(nval, 0.7, 1.4, 2.8, 4.0)
 		_:
 			return remap(nval, -1.0, 1.0, 0.3, 3.0)
 
@@ -430,7 +378,7 @@ func save_map(path: String, p_river_cells: Dictionary = {}, p_road_cells: Dictio
 		return
 	f.store_buffer(buf.data_array)
 	f.close()
-	print("ChunkManager: Saved binary map (%d cells, %d resources, %d KB)" % [cells.size(), p_resource_cache.size(), buf.data_array.size() / 1024])
+	print("ChunkManager: Saved binary map (%d cells, %d resources, %.1f KB)" % [cells.size(), p_resource_cache.size(), buf.data_array.size() / 1024.0])
 
 
 func load_map(path: String) -> Dictionary:

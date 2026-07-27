@@ -6,11 +6,11 @@ uniform float noise_seed = 42.0;
 uniform int noise_octaves : hint_range(1, 8) = 6;
 uniform float noise_lacunarity = 2.0;
 uniform float noise_gain = 0.5;
-uniform float max_height = 5.0;
 uniform float water_level = 0.32;
 uniform float grid_line_width : hint_range(0.0, 0.5) = 0.08;
-uniform float height_step : hint_range(0.0, 20.0, 0.1) = 0.0;
+uniform float height_step : hint_range(0.0, 50.0, 0.1) = 5.0;
 uniform float height_exp : hint_range(0.1, 5.0, 0.1) = 1.0;
+uniform float terrain_max : hint_range(10.0, 500.0) = 200.0;
 
 varying float v_elevation;
 varying float v_biome;
@@ -80,32 +80,25 @@ float hex_grid_line(vec2 p, float R) {
 }
 
 void vertex() {
-	vec4 wp = MODEL_MATRIX * vec4(VERTEX, 1.0);
-	vec2 wxz = wp.xz;
-	v_world_xz = vec3(wxz.x, 0.0, wxz.y);
+	float e_norm = CUSTOM0.r;
+	v_biome = CUSTOM0.g * 10.0;
+	v_elevation = e_norm;
 
-	float e = fbm(wxz * noise_freq + noise_seed);
-	e = e * 0.5 + 0.5;
-	e = clamp(e, 0.0, 1.0);
-	v_elevation = e;
-
-	if (e < water_level * 0.5) v_biome = 0.0;
-	else if (e < water_level) v_biome = 1.0;
-	else if (e < water_level + 0.04) v_biome = 2.0;
-	else if (e < 0.42) v_biome = 3.0;
-	else if (e < 0.52) v_biome = 4.0;
-	else if (e < 0.62) v_biome = 6.0;
-	else if (e < 0.72) v_biome = 7.0;
-	else if (e < 0.82) v_biome = 8.0;
-	else if (e < 0.92) v_biome = 9.0;
-	else v_biome = 10.0;
-
-	float h = pow(e, 1.0 / height_exp) * max_height;
-	if (height_step > 0.0) {
-		h = floor(h / height_step) * height_step;
+	float h;
+	if (v_biome < 1.5) {
+		h = water_level * 100.0;
+	} else {
+		h = pow(max(e_norm, 0.001), height_exp) * terrain_max;
+		if (height_step > 0.0) {
+			h = floor(h / height_step) * height_step;
+		}
+		h = max(h, water_level * 100.0 + 0.5);
 	}
-	h = max(h, 0.05);
+
 	VERTEX.y = h;
+
+	vec4 wp = MODEL_MATRIX * vec4(VERTEX, 1.0);
+	v_world_xz = vec3(wp.x, 0.0, wp.z);
 }
 
 void fragment() {
@@ -131,23 +124,12 @@ void fragment() {
 		col = vec3(0.3 + v, 0.65 + v, 0.15 + v);
 		ROUGHNESS = 0.8;
 	} else if (v_biome < 4.5) {
-		col = vec3(0.15 + v, 0.42 + v, 0.1 + v);
+		col = vec3(0.45 + v, 0.35 + v, 0.18 + v);
 		ROUGHNESS = 0.85;
-	} else if (v_biome < 5.5) {
-		col = vec3(0.7, 0.5, 0.2);
-		ROUGHNESS = 0.75;
-	} else if (v_biome < 6.5) {
-		col = vec3(0.55 + v, 0.38 + v, 0.18 + v);
-		ROUGHNESS = 0.8;
-	} else if (v_biome < 7.5) {
-		col = vec3(0.45 + v, 0.44 + v, 0.42 + v);
-		ROUGHNESS = 0.65;
-	} else if (v_biome < 8.5) {
-		col = vec3(0.62 + v, 0.6 + v, 0.58 + v);
-		ROUGHNESS = 0.5;
 	} else {
-		col = vec3(0.85 + v * 0.5, 0.85 + v * 0.5, 0.88 + v * 0.5);
-		ROUGHNESS = 0.35;
+		float snow = smoothstep(0.65, 1.0, v_elevation);
+		col = mix(vec3(0.55 + v, 0.55 + v, 0.58 + v), vec3(0.95), snow);
+		ROUGHNESS = mix(0.7, 0.35, snow);
 	}
 
 	float sdf = hex_grid_line(v_world_xz.xz, 1.1547);
