@@ -91,6 +91,8 @@ void vertex() {
 		h = pow(max(e_norm, 0.001), height_exp) * terrain_max;
 		if (height_step > 0.0) {
 			h = floor(h / height_step) * height_step;
+		} else {
+			h = 0.0;
 		}
 		h = max(h, water_level * 100.0 + 0.5);
 	}
