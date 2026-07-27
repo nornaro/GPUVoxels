@@ -149,7 +149,7 @@ func _generate_chunk(key: Vector2i) -> void:
 				if cell:
 					elevation = cell.elevation
 					biome = cell.biome
-			var e_norm := clampf((elevation + 1.0) / 5.0, 0.0, 1.0)
+			var e_norm := clampf(elevation / 4.0, 0.0, 1.0)
 			var biome_norm := float(biome) / 10.0
 			var center_attr := Color(e_norm, biome_norm, 0.0, 1.0)
 			var corner_attrs: Array[Color] = []

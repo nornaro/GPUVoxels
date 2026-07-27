@@ -102,12 +102,16 @@ var _label: Label
 var _menu: Control
 var _height_slider: HSlider
 var _height_label: Label
+var _height_input: LineEdit
 var _grid_slider: HSlider
 var _grid_label: Label
+var _grid_input: LineEdit
 var _radius_slider: HSlider
 var _radius_label: Label
+var _radius_input: LineEdit
 var _exp_slider: HSlider
 var _exp_label: Label
+var _exp_input: LineEdit
 
 var _cursor_instance: MeshInstance3D
 var _last_cursor_hex: Vector3i = Vector3i(999999, 999999, -1999998)
@@ -418,12 +422,14 @@ func _cell_exists(hex: Vector3i) -> bool:
 func _get_cell_height(cell: HexCellData) -> float:
 	if _is_water_biome(cell.biome):
 		return WATER_HEIGHT * FIXED_HEIGHT
-	var e_norm := clampf((cell.elevation + 1.0) / 5.0, 0.0, 1.0)
+	var e_norm := clampf(cell.elevation / 4.0, 0.0, 1.0)
 	var exp_val := _exp_slider.value if _exp_slider else 1.0
 	var step_size := _height_slider.value if _height_slider else 5.0
 	var h := pow(maxf(e_norm, 0.001), exp_val) * TERRAIN_MAX_HEIGHT
 	if step_size > 0.0:
 		h = floor(h / step_size) * step_size
+	else:
+		h = 0.0
 	return maxf(h, WATER_HEIGHT * FIXED_HEIGHT + 0.5)
 
 
@@ -1113,9 +1119,18 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(sep2)
 
 	_radius_label = Label.new()
-	_radius_label.text = "Radius: 300"
+	_radius_label.text = "Radius:"
 	_radius_label.add_theme_font_size_override("font_size", 12)
-	vbox.add_child(_radius_label)
+	_radius_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_radius_input = LineEdit.new()
+	_radius_input.text = "300"
+	_radius_input.custom_minimum_size = Vector2(60, 0)
+	_radius_input.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_radius_input.text_submitted.connect(_on_radius_input)
+	var _radius_row := HBoxContainer.new()
+	_radius_row.add_child(_radius_label)
+	_radius_row.add_child(_radius_input)
+	vbox.add_child(_radius_row)
 
 	_radius_slider = HSlider.new()
 	_radius_slider.min_value = 10.0
@@ -1130,14 +1145,23 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(sep_h)
 
 	_height_label = Label.new()
-	_height_label.text = "Step: 5"
+	_height_label.text = "Step:"
 	_height_label.add_theme_font_size_override("font_size", 12)
-	vbox.add_child(_height_label)
+	_height_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_height_input = LineEdit.new()
+	_height_input.text = "5"
+	_height_input.custom_minimum_size = Vector2(60, 0)
+	_height_input.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_height_input.text_submitted.connect(_on_height_input)
+	var _height_row := HBoxContainer.new()
+	_height_row.add_child(_height_label)
+	_height_row.add_child(_height_input)
+	vbox.add_child(_height_row)
 
 	_height_slider = HSlider.new()
 	_height_slider.min_value = 0.0
 	_height_slider.max_value = 50.0
-	_height_slider.step = 0.5
+	_height_slider.step = 0.1
 	_height_slider.value = 5.0
 	_height_slider.custom_minimum_size = Vector2(180, 0)
 	_height_slider.value_changed.connect(_on_height_changed)
@@ -1147,9 +1171,18 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(sep_exp)
 
 	_exp_label = Label.new()
-	_exp_label.text = "Curve: 1.0"
+	_exp_label.text = "Curve:"
 	_exp_label.add_theme_font_size_override("font_size", 12)
-	vbox.add_child(_exp_label)
+	_exp_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_exp_input = LineEdit.new()
+	_exp_input.text = "1.0"
+	_exp_input.custom_minimum_size = Vector2(60, 0)
+	_exp_input.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_exp_input.text_submitted.connect(_on_exp_input)
+	var _exp_row := HBoxContainer.new()
+	_exp_row.add_child(_exp_label)
+	_exp_row.add_child(_exp_input)
+	vbox.add_child(_exp_row)
 
 	_exp_slider = HSlider.new()
 	_exp_slider.min_value = 0.1
@@ -1164,9 +1197,18 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(sep_grid)
 
 	_grid_label = Label.new()
-	_grid_label.text = "Grid Lines: 0.08"
+	_grid_label.text = "Grid Lines:"
 	_grid_label.add_theme_font_size_override("font_size", 12)
-	vbox.add_child(_grid_label)
+	_grid_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grid_input = LineEdit.new()
+	_grid_input.text = "0.08"
+	_grid_input.custom_minimum_size = Vector2(60, 0)
+	_grid_input.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_grid_input.text_submitted.connect(_on_grid_input)
+	var _grid_row := HBoxContainer.new()
+	_grid_row.add_child(_grid_label)
+	_grid_row.add_child(_grid_input)
+	vbox.add_child(_grid_row)
 
 	_grid_slider = HSlider.new()
 	_grid_slider.min_value = 0.0
@@ -1315,24 +1357,45 @@ func _on_palette_item_selected(path: String) -> void:
 # APPROACH SWITCHING
 # ============================================================================
 func _on_radius_changed(value: float) -> void:
-	_radius_label.text = "Radius: %d" % int(value)
+	_radius_input.text = "%d" % int(value)
 	if _current_approach != "":
 		_rebuild_terrain()
 
 
 func _on_height_changed(value: float) -> void:
-	_height_label.text = "Step: %.1f" % value
+	_height_input.text = "%.1f" % value
 	_apply_uniform("height_step", value)
 
 
 func _on_exp_changed(value: float) -> void:
-	_exp_label.text = "Curve: %.1f" % value
+	_exp_input.text = "%.1f" % value
 	_apply_uniform("height_exp", value)
 
 
 func _on_grid_changed(value: float) -> void:
-	_grid_label.text = "Grid Lines: %.2f" % value
+	_grid_input.text = "%.2f" % value
 	_apply_uniform("grid_line_width", value)
+
+
+func _on_radius_input(text: String) -> void:
+	var val := text.to_float()
+	if val >= 10.0:
+		_radius_slider.value = val
+
+
+func _on_height_input(text: String) -> void:
+	var val := text.to_float()
+	_height_slider.value = clampf(val, 0.0, 50.0)
+
+
+func _on_exp_input(text: String) -> void:
+	var val := text.to_float()
+	_exp_slider.value = clampf(val, 0.1, 5.0)
+
+
+func _on_grid_input(text: String) -> void:
+	var val := text.to_float()
+	_grid_slider.value = clampf(val, 0.0, 0.3)
 
 
 func _rebuild_terrain() -> void:
