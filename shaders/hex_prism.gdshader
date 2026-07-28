@@ -82,7 +82,7 @@ void vertex() {
 	v_biome = INSTANCE_CUSTOM.g * 10.0;
 	v_elevation = e_norm;
 
-	float h = pow(max(e_norm, 0.001), height_exp) * height_step;
+	float h = pow(max(height_step * e_norm, 0.001), height_exp);
 	VERTEX.y = h;
 
 	vec4 wp = MODEL_MATRIX * vec4(VERTEX, 1.0);

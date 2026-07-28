@@ -425,7 +425,7 @@ func _get_mouse_hex() -> Vector3i:
 	if world_pos.x == INF:
 		return Vector3i(999999, 999999, -1999998)
 	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
-	for _i in 3:
+	for _i in 8:
 		var cell := chunk_manager.get_or_create_cell(hex)
 		if not cell:
 			break
@@ -448,7 +448,7 @@ func _get_cell_height(cell: HexCellData) -> float:
 	var step_size := _height_slider.value if _height_slider else 3.0
 	var exp_val := _exp_slider.value if _exp_slider else 1.0
 	var e_norm := clampf(cell.elevation / 4.0, 0.0, 1.0)
-	return pow(maxf(e_norm, 0.001), exp_val) * step_size
+	return pow(maxf(step_size * e_norm, 0.001), exp_val)
 
 
 func _is_water_biome(biome: int) -> bool:
