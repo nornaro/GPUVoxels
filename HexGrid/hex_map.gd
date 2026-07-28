@@ -671,6 +671,31 @@ func _place_object_at(_screen_pos: Vector2) -> void:
 	print("Place: %s at %s" % [selected_model_path.get_file(), hex])
 
 
+func _get_hex_normal(hex: Vector3i) -> Vector3:
+	var center_pos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var center_h := 0.0
+	if cells.has(hex):
+		center_h = _get_cell_height(cells[hex])
+	var dir_a := Vector3i(1, 0, -1)
+	var dir_b := Vector3i(0, -1, 1)
+	var hex_a := hex + dir_a
+	var hex_b := hex + dir_b
+	var pos_a := HexGridMath.cube_to_world_flat_top(hex_a, HEX_SIZE)
+	var pos_b := HexGridMath.cube_to_world_flat_top(hex_b, HEX_SIZE)
+	var h_a := 0.0
+	var h_b := 0.0
+	if cells.has(hex_a):
+		h_a = _get_cell_height(cells[hex_a])
+	if cells.has(hex_b):
+		h_b = _get_cell_height(cells[hex_b])
+	var tangent_a := Vector3(pos_a.x - center_pos.x, h_a - center_h, pos_a.z - center_pos.z)
+	var tangent_b := Vector3(pos_b.x - center_pos.x, h_b - center_h, pos_b.z - center_pos.z)
+	var n := tangent_a.cross(tangent_b)
+	if n.length_squared() < 0.0001:
+		return Vector3.UP
+	return n.normalized()
+
+
 func _place_object_on_hex(hex: Vector3i, model_path: String, rot: float = 0.0, scl: float = 1.0) -> void:
 	_remove_object_at(hex)
 	placed_objects[hex] = {"path": model_path, "rotation": rot, "scale": scl}
@@ -685,7 +710,12 @@ func _place_object_on_hex(hex: Vector3i, model_path: String, rot: float = 0.0, s
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 	var height := _get_cell_height(cell)
 	instance.position = Vector3(hpos.x, height, hpos.z)
-	instance.rotation_degrees.y = rot
+	var normal := _get_hex_normal(hex)
+	var axis := Vector3.UP.cross(normal)
+	var angle := acos(clampf(Vector3.UP.dot(normal), -1.0, 1.0))
+	var tilt_quat := Quaternion(axis.normalized(), angle) if axis.length_squared() > 0.0001 else Quaternion.IDENTITY
+	var yaw_quat := Quaternion(Vector3.UP, deg_to_rad(rot))
+	instance.basis = Basis(tilt_quat * yaw_quat)
 	instance.scale = Vector3(scl, scl, scl)
 	_placed_object_instances[hex] = instance
 
