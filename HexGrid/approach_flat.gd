@@ -13,12 +13,15 @@ const VERTEX_NEIGHBORS: Array = [
 	[0, 1], [0, 5], [5, 4], [4, 3], [3, 2], [2, 1],
 ]
 
+const CHunks_PER_FRAME: int = 2
+
 var grid_radius: int = 100
 var _shared_mat: ShaderMaterial
 var _corners_x: PackedFloat64Array
 var _corners_z: PackedFloat64Array
 var _chunks := {}
 var _last_cam_chunk := Vector2i(999999, 999999)
+var _chunk_queue: Array[Vector2i] = []
 
 func _ready() -> void:
 	grid_radius = get_meta("grid_radius", 100)
@@ -32,6 +35,8 @@ func _ready() -> void:
 		_corners_z.append(sin(angle) * HEX_SIZE)
 	var t := Time.get_ticks_msec()
 	_update_chunks(Vector2i(999999, 999999), true)
+	while not _chunk_queue.is_empty():
+		_generate_chunk(_chunk_queue.pop_front())
 	var elapsed := (Time.get_ticks_msec() - t) / 1000.0
 	print("[Approach B] Done in %.2fs" % elapsed)
 
@@ -48,6 +53,10 @@ func _process(_delta: float) -> void:
 	if cc != _last_cam_chunk:
 		_last_cam_chunk = cc
 		_update_chunks(cc, false)
+	for _i in CHunks_PER_FRAME:
+		if _chunk_queue.is_empty():
+			break
+		_generate_chunk(_chunk_queue.pop_front())
 
 
 func rebuild_chunk_for_hex(hex: Vector3i) -> void:
@@ -67,8 +76,11 @@ func _update_chunks(cam_chunk: Vector2i, initial: bool) -> void:
 			var key := Vector2i(cam_chunk.x + dq, cam_chunk.y + dr)
 			if _chunk_has_hexes(key):
 				needed[key] = true
-				if key not in _chunks:
-					_generate_chunk(key)
+				if key not in _chunks and key not in _chunk_queue:
+					_chunk_queue.append(key)
+	_chunk_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (a - cam_chunk).length_squared() < (b - cam_chunk).length_squared()
+	)
 
 	var to_remove: Array[Vector2i] = []
 	for key in _chunks:
@@ -79,7 +91,7 @@ func _update_chunks(cam_chunk: Vector2i, initial: bool) -> void:
 		_chunks.erase(key)
 
 	if initial:
-		print("[Approach B] %d chunks" % _chunks.size())
+		print("[Approach B] %d chunks queued" % _chunk_queue.size())
 
 
 func _chunk_has_hexes(key: Vector2i) -> bool:

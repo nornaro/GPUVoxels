@@ -11,6 +11,8 @@ var _hex_mesh: ArrayMesh
 var _shared_mat: ShaderMaterial
 var _chunks := {}
 var _last_cam_chunk := Vector2i(999999, 999999)
+var _chunk_queue: Array[Vector2i] = []
+const CHUNKS_PER_FRAME: int = 2
 
 func _ready() -> void:
 	grid_radius = get_meta("grid_radius", 100)
@@ -19,6 +21,8 @@ func _ready() -> void:
 	_shared_mat.shader = load("res://shaders/hex_prism.gdshader")
 	var t := Time.get_ticks_msec()
 	_update_chunks(Vector2i(999999, 999999), true)
+	while not _chunk_queue.is_empty():
+		_generate_chunk(_chunk_queue.pop_front())
 	var elapsed := (Time.get_ticks_msec() - t) / 1000.0
 	print("[Approach A] Done in %.2fs" % elapsed)
 
@@ -35,6 +39,10 @@ func _process(_delta: float) -> void:
 	if cc != _last_cam_chunk:
 		_last_cam_chunk = cc
 		_update_chunks(cc, false)
+	for _i in CHUNKS_PER_FRAME:
+		if _chunk_queue.is_empty():
+			break
+		_generate_chunk(_chunk_queue.pop_front())
 
 
 func rebuild_chunk_for_hex(hex: Vector3i) -> void:
@@ -54,8 +62,11 @@ func _update_chunks(cam_chunk: Vector2i, initial: bool) -> void:
 			var key := Vector2i(cam_chunk.x + dq, cam_chunk.y + dr)
 			if _chunk_has_hexes(key):
 				needed[key] = true
-				if key not in _chunks:
-					_generate_chunk(key)
+				if key not in _chunks and key not in _chunk_queue:
+					_chunk_queue.append(key)
+	_chunk_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (a - cam_chunk).length_squared() < (b - cam_chunk).length_squared()
+	)
 
 	var to_remove: Array[Vector2i] = []
 	for key in _chunks:
@@ -66,7 +77,7 @@ func _update_chunks(cam_chunk: Vector2i, initial: bool) -> void:
 		_chunks.erase(key)
 
 	if initial:
-		print("[Approach A] %d chunks, %d total instances" % [_chunks.size(), _count_instances()])
+		print("[Approach A] %d chunks queued, %d total instances" % [_chunk_queue.size(), _count_instances()])
 
 
 func _chunk_has_hexes(key: Vector2i) -> bool:

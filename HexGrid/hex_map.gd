@@ -37,6 +37,38 @@ const RESOURCE_ROCK_MODELS := [
 	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_B.tscn",
 	"res://assets/kaykit_medieval_hexagon_pack/decoration/nature/rock_single_C.tscn",
 ]
+const MINERAL_TYPES := ["silver", "gold", "tungsten", "titanium", "copper"]
+const MINERAL_COLORS := {
+	"silver": Color(0.75, 0.75, 0.8, 0.6),
+	"gold": Color(0.95, 0.8, 0.2, 0.6),
+	"tungsten": Color(0.4, 0.42, 0.5, 0.6),
+	"titanium": Color(0.6, 0.65, 0.7, 0.6),
+	"copper": Color(0.85, 0.5, 0.25, 0.6),
+	"oil": Color(0.15, 0.15, 0.15, 0.6),
+}
+const RESOURCE_OIL_COLOR := Color(0.15, 0.15, 0.15, 0.6)
+
+const WALL_BASE := "res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/"
+
+const WALL_TYPE_STRAIGHT := 0
+const WALL_TYPE_CORNER_A_IN := 1
+const WALL_TYPE_CORNER_A_OUT := 2
+const WALL_TYPE_CORNER_B_IN := 3
+const WALL_TYPE_CORNER_B_OUT := 4
+
+const WALL_MODEL_TYPES: Dictionary = {
+	"wall_straight.tscn": WALL_TYPE_STRAIGHT,
+	"wall_straight_gate.tscn": WALL_TYPE_STRAIGHT,
+	"wall_straight_gate_door_left.tscn": WALL_TYPE_STRAIGHT,
+	"wall_straight_gate_door_right.tscn": WALL_TYPE_STRAIGHT,
+	"wall_corner_A_inside.tscn": WALL_TYPE_CORNER_A_IN,
+	"wall_corner_A_outside.tscn": WALL_TYPE_CORNER_A_OUT,
+	"wall_corner_A_gate.tscn": WALL_TYPE_CORNER_A_IN,
+	"wall_corner_A_gate_door_left.tscn": WALL_TYPE_CORNER_A_IN,
+	"wall_corner_A_gate_door_right.tscn": WALL_TYPE_CORNER_A_IN,
+	"wall_corner_B_inside.tscn": WALL_TYPE_CORNER_B_IN,
+	"wall_corner_B_outside.tscn": WALL_TYPE_CORNER_B_OUT,
+}
 
 var cells: Dictionary = {}
 var chunk_manager: ChunkManager
@@ -77,12 +109,18 @@ var _placement_scale: float = 1.0
 var _default_scale: float = 1.0
 var _ghost_instance: Node3D = null
 var _ghost_model_path: String = ""
+var _ghost_indicators: Node3D = null
+var _indicator_mesh: SphereMesh
 
 var _level_target: Vector3i = Vector3i(999999, 999999, -1999998)
 var _flatten_target: float = 0.0
 var _flatten_captured: bool = false
 
 var _needs_rebuild: bool = false
+var _last_overlay_hex: Vector3i = Vector3i(999999, 999999, -1999998)
+var _cached_mouse_hex: Vector3i = Vector3i(999999, 999999, -1999998)
+var _mouse_hex_valid: bool = false
+var _overlay_rebuild_timer: float = 0.0
 
 var _overlay_mesh_instance: MeshInstance3D
 var _tool_flash_timer: float = 0.0
@@ -120,6 +158,12 @@ func _ready() -> void:
 	_setup_camera()
 	_objects_container = Node3D.new()
 	add_child(_objects_container)
+	_ghost_indicators = Node3D.new()
+	_ghost_indicators.name = "GhostIndicators"
+	add_child(_ghost_indicators)
+	_indicator_mesh = SphereMesh.new()
+	_indicator_mesh.radius = 0.15
+	_indicator_mesh.height = 0.3
 	_overlay_mesh_instance = MeshInstance3D.new()
 	var overlay_mat := StandardMaterial3D.new()
 	overlay_mat.vertex_color_use_as_albedo = true
@@ -141,6 +185,8 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	_mouse_hex_valid = false
+
 	_process_orbit()
 	_process_pan()
 	_process_wasd(delta)
@@ -150,14 +196,30 @@ func _process(delta: float) -> void:
 		if _tool_flash_timer <= 0.0:
 			_update_tool_ui()
 
-	if _needs_rebuild:
+	var cur_hex := _get_mouse_hex()
+	_mouse_hex_valid = true
+	_cached_mouse_hex = cur_hex
+
+	_overlay_rebuild_timer -= delta
+
+	if show_overlay or show_resources or (tool_mode == 4 and not selected_model_path.is_empty()):
+		var chunk_size := 10
+		var cur_ck := Vector2i(floori(float(cur_hex.x) / chunk_size), floori(float(cur_hex.y) / chunk_size))
+		var last_ck := Vector2i(floori(float(_last_overlay_hex.x) / chunk_size), floori(float(_last_overlay_hex.y) / chunk_size))
+		if (cur_ck != last_ck or _needs_rebuild) and _overlay_rebuild_timer <= 0.0:
+			_rebuild_overlay_mesh()
+			_last_overlay_hex = cur_hex
+			_overlay_rebuild_timer = 0.08
+		_needs_rebuild = false
+	elif _needs_rebuild and _overlay_rebuild_timer <= 0.0:
 		_rebuild_overlay_mesh()
 		_needs_rebuild = false
+		_overlay_rebuild_timer = 0.08
 
 	if tool_mode == 4:
-		_update_ghost_position()
-	_update_hover_info()
-	_update_cursor()
+		_update_ghost_position(cur_hex)
+	_update_hover_info(cur_hex)
+	_update_cursor(cur_hex)
 
 
 func _process_orbit() -> void:
@@ -324,11 +386,11 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_Z:
 			if tool_mode == 4:
 				_placement_rotation = wrapf(_placement_rotation - 60.0, 0.0, 360.0)
-				_tool_flash("Rotation: %.0f°" % _placement_rotation)
+				_tool_flash("Rotation: %.0f° sides %s" % [_placement_rotation, str(_get_wall_connections(selected_model_path, _placement_rotation))])
 		KEY_X:
 			if tool_mode == 4:
 				_placement_rotation = wrapf(_placement_rotation + 60.0, 0.0, 360.0)
-				_tool_flash("Rotation: %.0f°" % _placement_rotation)
+				_tool_flash("Rotation: %.0f° sides %s" % [_placement_rotation, str(_get_wall_connections(selected_model_path, _placement_rotation))])
 		KEY_KP_ADD:
 			if tool_mode == 4:
 				_placement_scale = clampf(_placement_scale + 0.05, 0.75, 1.25)
@@ -455,10 +517,18 @@ func _is_water_biome(biome: int) -> bool:
 	return biome == BIOME_DEEP_WATER or biome == BIOME_WATER
 
 
-func _update_hover_info() -> void:
+func _is_sub_hex_water(hex: Vector3i, sub_idx: int) -> bool:
+	if not _cell_exists(hex):
+		return false
+	var c: HexCellData = cells[hex]
+	if _is_water_biome(c.biome):
+		return true
+	return false
+
+
+func _update_hover_info(hex: Vector3i) -> void:
 	if tool_mode == 4:
 		return
-	var hex := _get_mouse_hex()
 	if hex == _last_hover_hex:
 		return
 	_last_hover_hex = hex
@@ -503,12 +573,61 @@ func _update_tool_buttons() -> void:
 		_tool_buttons[i].button_pressed = (i == tool_mode)
 
 
-func _update_ghost_position() -> void:
+func _get_wall_type(model_path: String) -> int:
+	var fname := model_path.get_file()
+	return WALL_MODEL_TYPES.get(fname, WALL_TYPE_STRAIGHT)
+
+
+func _get_wall_connections(model_path: String, rot_deg: float) -> Array:
+	var wtype := _get_wall_type(model_path)
+	var r := int(rot_deg / 60.0) % 6
+	if r < 0:
+		r += 6
+	var base: int = (6 - r) % 6
+	match wtype:
+		WALL_TYPE_STRAIGHT:
+			return [base, (base + 3) % 6]
+		WALL_TYPE_CORNER_A_IN:
+			return [base, (base + 2) % 6]
+		WALL_TYPE_CORNER_A_OUT:
+			return [base, (base + 4) % 6]
+		WALL_TYPE_CORNER_B_IN:
+			return [base, (base + 1) % 6]
+		WALL_TYPE_CORNER_B_OUT:
+			return [base, (base + 5) % 6]
+	return []
+
+
+func _is_wall_connection_valid(hex: Vector3i, model_path: String, rot_deg: float) -> bool:
+	var sides := _get_wall_connections(model_path, rot_deg)
+	if sides.is_empty():
+		return false
+	for s in sides:
+		var si: int = int(s)
+		var neighbor := hex + HexGridMath.cube_direction(si)
+		if not cells.has(neighbor):
+			continue
+		if not placed_objects.has(neighbor):
+			continue
+		var n_data: Variant = placed_objects[neighbor]
+		if not n_data is Dictionary:
+			continue
+		var n_path: String = n_data.get("path", "")
+		var n_rot: float = n_data.get("rotation", 0.0)
+		var n_sides := _get_wall_connections(n_path, n_rot)
+		var opposite: int = (int(s) + 3) % 6
+		if opposite in n_sides:
+			continue
+		return false
+	return true
+
+
+func _update_ghost_position(hex: Vector3i) -> void:
 	if _ghost_instance == null:
 		return
-	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
 		_ghost_instance.visible = false
+		_clear_indicators()
 		return
 	_ghost_instance.visible = true
 	var cell: HexCellData = cells[hex]
@@ -517,6 +636,46 @@ func _update_ghost_position() -> void:
 	_ghost_instance.position = Vector3(hpos.x, height, hpos.z)
 	_ghost_instance.rotation_degrees.y = _placement_rotation
 	_ghost_instance.scale = Vector3(_placement_scale, _placement_scale, _placement_scale)
+	_update_indicators(hex)
+
+
+func _clear_indicators() -> void:
+	for c in _ghost_indicators.get_children():
+		c.queue_free()
+
+
+func _update_indicators(hex: Vector3i) -> void:
+	_clear_indicators()
+	if selected_model_path.is_empty():
+		return
+	var sides := _get_wall_connections(selected_model_path, _placement_rotation)
+	var hex_pos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+	var height := _get_cell_height(cells[hex])
+	for s in sides:
+		var si: int = int(s)
+		var dir := HexGridMath.cube_direction(si)
+		var n_hex := hex + dir
+		var n_pos := HexGridMath.cube_to_world_flat_top(n_hex, HEX_SIZE)
+		var mid := Vector3((hex_pos.x + n_pos.x) * 0.5, height + 0.5, (hex_pos.z + n_pos.z) * 0.5)
+		var mi := MeshInstance3D.new()
+		mi.mesh = _indicator_mesh
+		var mat := StandardMaterial3D.new()
+		var connected := false
+		if placed_objects.has(n_hex):
+			var n_data: Variant = placed_objects[n_hex]
+			if n_data is Dictionary:
+				var n_sides := _get_wall_connections(n_data.get("path", ""), n_data.get("rotation", 0.0))
+				if (int(s) + 3) % 6 in n_sides:
+					connected = true
+		if connected:
+			mat.albedo_color = Color(0.2, 1.0, 0.2, 0.9)
+		else:
+			mat.albedo_color = Color(1.0, 0.3, 0.2, 0.9)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mi.material_override = mat
+		mi.position = mid
+		_ghost_indicators.add_child(mi)
 
 
 func _create_ghost(model_path: String) -> void:
@@ -562,6 +721,7 @@ func _remove_ghost() -> void:
 		_ghost_instance.queue_free()
 	_ghost_instance = null
 	_ghost_model_path = ""
+	_clear_indicators()
 
 
 func _cancel_placement() -> void:
@@ -667,8 +827,20 @@ func _place_object_at(_screen_pos: Vector2) -> void:
 	if not _cell_exists(hex):
 		print("Place: cell %s does not exist" % hex)
 		return
+	var sides := _get_wall_connections(selected_model_path, _placement_rotation)
 	_place_object_on_hex(hex, selected_model_path, _placement_rotation, _placement_scale)
-	print("Place: %s at %s" % [selected_model_path.get_file(), hex])
+	var connected := 0
+	for s in sides:
+		var si: int = int(s)
+		var neighbor := hex + HexGridMath.cube_direction(si)
+		if placed_objects.has(neighbor):
+			var n_data: Variant = placed_objects[neighbor]
+			if n_data is Dictionary:
+				var n_sides := _get_wall_connections(n_data.get("path", ""), n_data.get("rotation", 0.0))
+				if (int(s) + 3) % 6 in n_sides:
+					connected += 1
+	_tool_flash("Placed %s sides%s connected:%d" % [selected_model_path.get_file().get_basename(), str(sides), connected])
+	print("Place: %s at %s rot=%.0f sides=%s" % [selected_model_path.get_file(), hex, _placement_rotation, str(sides)])
 
 
 func _get_hex_normal(hex: Vector3i) -> Vector3:
@@ -772,6 +944,7 @@ func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
 	var in_tree_cluster := cluster < 0.10
 	var in_mountain_cluster := cluster > 0.88 and cluster < 0.95
 	var in_rock_cluster := cluster > 0.62 and cluster < 0.67
+	var used_subs: Array[int] = []
 	for sub_idx in TOTAL_SUBS:
 		var h := float(hex.x) * 12.9898 + float(hex.y) * 78.233 + float(sub_idx) * 45.164
 		var density := _resource_noise(h)
@@ -794,13 +967,32 @@ func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
 					model_path = RESOURCE_MOUNTAIN_MODELS[int(h * 7.0) % RESOURCE_MOUNTAIN_MODELS.size()]
 			BIOME_DIRT:
 				if in_rock_cluster and density > 0.45:
-					resource_type = "rock"
-					model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+					var rock_model: String = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+					var mineral_roll := _resource_noise(h + 500.0)
+					if mineral_roll > 0.6:
+						var mineral_idx := int(_resource_noise(h + 700.0) * MINERAL_TYPES.size()) % MINERAL_TYPES.size()
+						resource_type = MINERAL_TYPES[mineral_idx]
+						model_path = rock_model
+					else:
+						resource_type = "rock"
+						model_path = rock_model
 				elif not in_rock_cluster and density > 0.94:
-					resource_type = "rock"
-					model_path = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+					var rock_model: String = RESOURCE_ROCK_MODELS[int(h * 5.0) % RESOURCE_ROCK_MODELS.size()]
+					var mineral_roll := _resource_noise(h + 500.0)
+					if mineral_roll > 0.6:
+						var mineral_idx := int(_resource_noise(h + 700.0) * MINERAL_TYPES.size()) % MINERAL_TYPES.size()
+						resource_type = MINERAL_TYPES[mineral_idx]
+						model_path = rock_model
+					else:
+						resource_type = "rock"
+						model_path = rock_model
 		if not resource_type.is_empty():
 			resources.append({"sub_idx": sub_idx, "type": resource_type, "model": model_path})
+			used_subs.append(sub_idx)
+		elif sub_idx >= 1 and used_subs.size() < 7:
+			var oil_roll := _resource_noise(h + 2000.0)
+			if oil_roll > 0.92 and not _is_sub_hex_water(hex, sub_idx):
+				resources.append({"sub_idx": sub_idx, "type": "oil", "model": RESOURCE_ROCK_MODELS[int(h * 3.0) % RESOURCE_ROCK_MODELS.size()]})
 	return resources
 
 
@@ -855,6 +1047,8 @@ func _rebuild_decorations() -> void:
 		var height := _get_cell_height(cell)
 		for res in resource_cache[hex]:
 			var model_path: String = res["model"]
+			if model_path.is_empty():
+				continue
 			var sub_idx: int = res["sub_idx"]
 			if not model_instances.has(model_path):
 				model_instances[model_path] = []
@@ -908,10 +1102,13 @@ func _free_all_decorations() -> void:
 
 
 func _get_resource_color(rtype: String) -> Color:
+	if MINERAL_COLORS.has(rtype):
+		return MINERAL_COLORS[rtype]
 	match rtype:
 		"tree": return Color(0.2, 0.7, 0.2, 0.5)
 		"mountain": return Color(0.6, 0.5, 0.5, 0.5)
 		"rock": return Color(0.5, 0.5, 0.4, 0.5)
+		"oil": return RESOURCE_OIL_COLOR
 	return Color.WHITE
 
 
@@ -930,6 +1127,59 @@ func _get_sub_hex_local_pos(_parent_hex: Vector3i, sub_idx: int) -> Vector2:
 		return Vector2(cos(angle), sin(angle)) * SUB_HEX_DIST
 
 
+func _get_corner_enorm(cell: HexCellData, corner_idx: int) -> float:
+	var avg_e: float = cell.elevation
+	var count: int = 1
+	var hex: Vector3i = cell.hex
+	var n1: Vector3i = hex + HexGridMath.cube_direction(VERTEX_NEIGHBORS[corner_idx][0])
+	var n2: Vector3i = hex + HexGridMath.cube_direction(VERTEX_NEIGHBORS[corner_idx][1])
+	if cells.has(n1):
+		avg_e += cells[n1].elevation
+		count += 1
+	if cells.has(n2):
+		avg_e += cells[n2].elevation
+		count += 1
+	return clampf(avg_e / float(count) / 4.0, 0.0, 1.0)
+
+
+func _get_height_at_local_offset(cell: HexCellData, lx: float, lz: float) -> float:
+	var step_size := _height_slider.value if _height_slider else 3.0
+	var exp_val := _exp_slider.value if _exp_slider else 1.0
+	var center_en := clampf(cell.elevation / 4.0, 0.0, 1.0)
+	if absf(lx) < 0.001 and absf(lz) < 0.001:
+		return pow(maxf(step_size * center_en, 0.001), exp_val)
+	var angle_deg := rad_to_deg(atan2(lz, lx))
+	if angle_deg < 0.0:
+		angle_deg += 360.0
+	var sector := int(angle_deg / 60.0) % 6
+	var c_a := sector
+	var c_b := (sector + 1) % 6
+	var en_a := _get_corner_enorm(cell, c_a)
+	var en_b := _get_corner_enorm(cell, c_b)
+	var a_angle := deg_to_rad(60.0 * c_a)
+	var b_angle := deg_to_rad(60.0 * c_b)
+	var ax := cos(a_angle) * HEX_SIZE
+	var az := sin(a_angle) * HEX_SIZE
+	var bx := cos(b_angle) * HEX_SIZE
+	var bz := sin(b_angle) * HEX_SIZE
+	var det := ax * bz - az * bx
+	if absf(det) < 0.0001:
+		return pow(maxf(step_size * center_en, 0.001), exp_val)
+	var v := (lx * bz - lz * bx) / det
+	var w := (lz * ax - lx * az) / det
+	var u := 1.0 - v - w
+	u = clampf(u, 0.0, 1.0)
+	v = clampf(v, 0.0, 1.0)
+	w = clampf(w, 0.0, 1.0)
+	var en_interp := u * center_en + v * en_a + w * en_b
+	return pow(maxf(step_size * clampf(en_interp, 0.0, 1.0), 0.001), exp_val)
+
+
+func _get_sub_hex_deformed_height(hex: Vector3i, cell: HexCellData, sub_idx: int) -> float:
+	var local := _get_sub_hex_local_pos(hex, sub_idx)
+	return _get_height_at_local_offset(cell, local.x, local.y)
+
+
 # ============================================================================
 # OVERLAY MESH
 # ============================================================================
@@ -938,30 +1188,44 @@ func _rebuild_overlay_mesh() -> void:
 	imm.clear_surfaces()
 	imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 
+	var mouse_hex := _cached_mouse_hex if _mouse_hex_valid else _get_mouse_hex()
+	var chunk_size := 10
+	var ck_q := floori(float(mouse_hex.x) / chunk_size)
+	var ck_r := floori(float(mouse_hex.y) / chunk_size)
+
 	if show_overlay:
-		for hex in cells:
-			var cell: HexCellData = cells[hex]
-			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			var height := _get_cell_height(cell) + 0.03
-			for i in TOTAL_SUBS:
-				var local := _get_sub_hex_local_pos(hex, i)
-				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
-				_add_flat_hex_wireframe(imm, center, SUB_HEX_SIZE, Color(1, 1, 1, 0.25))
+		for q in range(ck_q * chunk_size, (ck_q + 1) * chunk_size):
+			for r in range(ck_r * chunk_size, (ck_r + 1) * chunk_size):
+				var hex := Vector3i(q, r, -q - r)
+				if not cells.has(hex):
+					continue
+				var cell: HexCellData = cells[hex]
+				var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+				for i in TOTAL_SUBS:
+					var local := _get_sub_hex_local_pos(hex, i)
+					var height := _get_sub_hex_deformed_height(hex, cell, i) + 0.03
+					var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+					_add_flat_hex_wireframe(imm, center, SUB_HEX_SIZE, Color(1, 1, 1, 0.25))
 
 	if show_resources:
-		for hex in cells:
-			if not resource_cache.has(hex):
-				continue
-			var cell: HexCellData = cells[hex]
-			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-			var height := _get_cell_height(cell) + 0.04
-			for res in resource_cache[hex]:
-				var local := _get_sub_hex_local_pos(hex, res["sub_idx"])
-				var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
-				_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, _get_resource_color(res["type"]))
+		for q in range(ck_q * chunk_size, (ck_q + 1) * chunk_size):
+			for r in range(ck_r * chunk_size, (ck_r + 1) * chunk_size):
+				var hex := Vector3i(q, r, -q - r)
+				if not cells.has(hex):
+					continue
+				if not resource_cache.has(hex):
+					continue
+				var cell: HexCellData = cells[hex]
+				var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+				for res in resource_cache[hex]:
+					var sub_i: int = int(res["sub_idx"])
+					var local := _get_sub_hex_local_pos(hex, sub_i)
+					var height := _get_sub_hex_deformed_height(hex, cell, sub_i) + 0.04
+					var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
+					_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, _get_resource_color(res["type"]))
 
 	if tool_mode == 4 and not selected_model_path.is_empty():
-		var hex := _get_mouse_hex()
+		var hex := _cached_mouse_hex if _mouse_hex_valid else _get_mouse_hex()
 		if _cell_exists(hex):
 			var cell: HexCellData = cells[hex]
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
@@ -1047,8 +1311,7 @@ func _setup_cursor() -> void:
 	add_child(_cursor_instance)
 
 
-func _update_cursor() -> void:
-	var hex := _get_mouse_hex()
+func _update_cursor(hex: Vector3i) -> void:
 	_last_cursor_hex = hex
 	if hex.x == 999999:
 		_cursor_instance.visible = false
