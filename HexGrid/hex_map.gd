@@ -3,7 +3,6 @@ extends Node3D
 const HEX_SIZE: float = 1.1547
 const SUB_HEX_SIZE: float = HEX_SIZE / 3.0
 const SUB_HEX_DIST: float = HEX_SIZE * 0.57735026919
-const WATER_HEIGHT: float = 0.32
 const VERTEX_OFFSET: int = 7
 const TOTAL_SUBS: int = 13
 
@@ -446,14 +445,10 @@ func _cell_exists(hex: Vector3i) -> bool:
 
 
 func _get_cell_height(cell: HexCellData) -> float:
-	var step_size := _height_slider.value if _height_slider else 5.0
-	var water_h := WATER_HEIGHT * step_size
-	if _is_water_biome(cell.biome):
-		return water_h
-	var e_norm := clampf(cell.elevation / 4.0, 0.0, 1.0)
+	var step_size := _height_slider.value if _height_slider else 3.0
 	var exp_val := _exp_slider.value if _exp_slider else 1.0
-	var h := pow(maxf(e_norm, 0.001), exp_val) * step_size
-	return maxf(h, water_h + 0.001)
+	var e_norm := clampf(cell.elevation / 4.0, 0.0, 1.0)
+	return pow(maxf(e_norm, 0.001), exp_val) * step_size
 
 
 func _is_water_biome(biome: int) -> bool:
@@ -652,7 +647,6 @@ func _apply_uniform(uniform_name: String, value: Variant) -> void:
 func _apply_all_uniforms() -> void:
 	_apply_uniform("height_step", _height_slider.value)
 	_apply_uniform("height_exp", _exp_slider.value)
-	_apply_uniform("water_level", WATER_HEIGHT)
 	_apply_uniform("grid_line_width", _grid_slider.value)
 	if chunk_manager:
 		_apply_uniform("noise_freq", chunk_manager.noise_freq)
@@ -1171,7 +1165,7 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	_height_label.add_theme_font_size_override("font_size", 12)
 	_height_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_height_input = LineEdit.new()
-	_height_input.text = "5"
+	_height_input.text = "3.0"
 	_height_input.custom_minimum_size = Vector2(60, 0)
 	_height_input.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_height_input.text_submitted.connect(_on_height_input)
@@ -1181,10 +1175,10 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(_height_row)
 
 	_height_slider = HSlider.new()
-	_height_slider.min_value = 0.0
-	_height_slider.max_value = 50.0
+	_height_slider.min_value = 0.5
+	_height_slider.max_value = 5.0
 	_height_slider.step = 0.1
-	_height_slider.value = 5.0
+	_height_slider.value = 3.0
 	_height_slider.custom_minimum_size = Vector2(180, 0)
 	_height_slider.value_changed.connect(_on_height_changed)
 	vbox.add_child(_height_slider)
@@ -1207,8 +1201,8 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	vbox.add_child(_exp_row)
 
 	_exp_slider = HSlider.new()
-	_exp_slider.min_value = 0.1
-	_exp_slider.max_value = 5.0
+	_exp_slider.min_value = 0.0
+	_exp_slider.max_value = 4.0
 	_exp_slider.step = 0.1
 	_exp_slider.value = 1.0
 	_exp_slider.custom_minimum_size = Vector2(180, 0)
@@ -1407,12 +1401,12 @@ func _on_radius_input(text: String) -> void:
 
 func _on_height_input(text: String) -> void:
 	var val := text.to_float()
-	_height_slider.value = clampf(val, 0.0, 50.0)
+	_height_slider.value = clampf(val, 0.5, 5.0)
 
 
 func _on_exp_input(text: String) -> void:
 	var val := text.to_float()
-	_exp_slider.value = clampf(val, 0.1, 5.0)
+	_exp_slider.value = clampf(val, 0.0, 4.0)
 
 
 func _on_grid_input(text: String) -> void:

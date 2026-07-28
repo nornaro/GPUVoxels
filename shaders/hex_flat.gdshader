@@ -6,10 +6,9 @@ uniform float noise_seed = 42.0;
 uniform int noise_octaves : hint_range(1, 8) = 6;
 uniform float noise_lacunarity = 2.0;
 uniform float noise_gain = 0.5;
-uniform float water_level = 0.32;
 uniform float grid_line_width : hint_range(0.0, 0.5) = 0.08;
-uniform float height_step : hint_range(0.0, 50.0, 0.1) = 5.0;
-uniform float height_exp : hint_range(0.1, 5.0, 0.1) = 1.0;
+uniform float height_step : hint_range(0.5, 5.0, 0.1) = 3.0;
+uniform float height_exp : hint_range(0.0, 4.0, 0.1) = 1.0;
 
 varying float v_elevation;
 varying float v_biome;
@@ -83,14 +82,7 @@ void vertex() {
 	v_biome = CUSTOM0.g * 10.0;
 	v_elevation = e_norm;
 
-	float h;
-	if (v_biome < 1.5) {
-		h = water_level * height_step;
-	} else {
-		h = pow(max(e_norm, 0.001), height_exp) * height_step;
-		h = max(h, water_level * height_step + 0.001);
-	}
-
+	float h = pow(max(e_norm, 0.001), height_exp) * height_step;
 	VERTEX.y = h;
 
 	vec4 wp = MODEL_MATRIX * vec4(VERTEX, 1.0);
