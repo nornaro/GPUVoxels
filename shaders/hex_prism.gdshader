@@ -89,34 +89,47 @@ void vertex() {
 	v_world_xz = vec3(wp.x, 0.0, wp.z);
 }
 
+vec3 biome_color(float b, float elev, float detail) {
+	vec3 deep_water = vec3(0.04, 0.22, 0.45);
+	vec3 water = vec3(0.1, 0.55, 0.7);
+	vec3 beach = vec3(0.76, 0.7, 0.45);
+	vec3 grass = vec3(0.3 + detail, 0.65 + detail, 0.15 + detail);
+	vec3 dirt = vec3(0.45 + detail, 0.35 + detail, 0.18 + detail);
+	float snow = smoothstep(0.65, 1.0, elev);
+	vec3 stone = mix(vec3(0.55 + detail, 0.55 + detail, 0.58 + detail), vec3(0.95), snow);
+
+	vec3 col = deep_water;
+
+	col = mix(col, water, smoothstep(0.5 - 0.15, 0.5 + 0.15, b));
+	col = mix(col, beach, smoothstep(1.5 - 0.15, 1.5 + 0.15, b));
+	col = mix(col, grass, smoothstep(2.5 - 0.15, 2.5 + 0.15, b));
+	col = mix(col, dirt, smoothstep(3.5 - 0.15, 3.5 + 0.15, b));
+	col = mix(col, stone, smoothstep(4.5 - 0.15, 4.5 + 0.15, b));
+
+	return col;
+}
+
 void fragment() {
 	float v = fbm(v_world_xz.xz * 0.3 + 50.0) * 0.08;
+	float nz = fbm(v_world_xz.xz * 0.15 + 10.0) * 0.04;
+	float nz2 = fbm(v_world_xz.xz * 0.6 + 200.0) * 0.03;
 
-	vec3 col;
-	if (v_biome < 0.5) {
-		col = vec3(0.04, 0.22, 0.45);
-		ALPHA = 0.9;
+	vec3 col = biome_color(v_biome, v_elevation, v + nz + nz2);
+
+	vec3 water_col = vec3(0.04, 0.22, 0.45);
+	if (v_biome < 1.5) {
+		col = mix(col, water_col, 0.6);
+		ALPHA = 0.8;
 		METALLIC = 0.1;
 		ROUGHNESS = 0.2;
 		SPECULAR = 0.6;
-	} else if (v_biome < 1.5) {
-		col = vec3(0.1, 0.55, 0.7);
-		ALPHA = 0.7;
-		METALLIC = 0.1;
-		ROUGHNESS = 0.25;
-		SPECULAR = 0.5;
 	} else if (v_biome < 2.5) {
-		col = vec3(0.76, 0.7, 0.45);
 		ROUGHNESS = 0.7;
 	} else if (v_biome < 3.5) {
-		col = vec3(0.3 + v, 0.65 + v, 0.15 + v);
 		ROUGHNESS = 0.8;
-	} else if (v_biome < 4.5) {
-		col = vec3(0.45 + v, 0.35 + v, 0.18 + v);
-		ROUGHNESS = 0.85;
 	} else {
-		col = vec3(0.55 + v, 0.55 + v, 0.58 + v);
-		ROUGHNESS = 0.65;
+		float snow = smoothstep(0.65, 1.0, v_elevation);
+		ROUGHNESS = mix(0.7, 0.35, snow);
 	}
 
 	float sdf = hex_grid_line(v_world_xz.xz, 1.1547);

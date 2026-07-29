@@ -120,6 +120,10 @@ var _level_target: Vector3i = INVALID_HEX
 var _flatten_target: float = 0.0
 var _flatten_captured: bool = false
 
+var _area_selector: AreaSelector = AreaSelector.new()
+var _tile_valuator: TileValuator = TileValuator.new()
+var _show_tile_values: bool = false
+
 var _needs_rebuild: bool = false
 var _last_overlay_hex: Vector3i = INVALID_HEX
 var _cached_mouse_hex: Vector3i = INVALID_HEX
@@ -372,18 +376,32 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			pan_start = event.position
 			pan_origin = cam_pivot
 		else:
-			match tool_mode:
-				1:
-					painting = true
-					_raise_at(event.position)
-				2:
-					painting = true
-					_flatten_at(event.position)
-				3:
-					painting = true
-					_level_at(event.position)
-				4:
-					_place_object_at(event.position)
+			var hex := _get_mouse_hex()
+			if tool_mode >= 1 and tool_mode <= 3:
+				if Input.is_key_pressed(KEY_SHIFT):
+					_area_selector.extend_selection(hex)
+					_needs_rebuild = true
+					return
+				elif not _area_selector.has_active_selection:
+					_area_selector.select_base(hex)
+					_needs_rebuild = true
+
+				if _area_selector.has_active_selection and not Input.is_key_pressed(KEY_SHIFT):
+					if _area_selector.is_ready():
+						_apply_area_action()
+					else:
+						match tool_mode:
+							1:
+								painting = true
+								_raise_hex(hex)
+							2:
+								painting = true
+								_flatten_hex(hex)
+							3:
+								painting = true
+								_level_hex(hex)
+			if tool_mode == 4:
+				_place_object_at(event.position)
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
@@ -415,8 +433,18 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_J:
 			show_resources = not show_resources
 			_needs_rebuild = true
+		KEY_TAB:
+			_show_tile_values = not _show_tile_values
+			_needs_rebuild = true
+			_tool_flash("Tile values: %s" % ["ON" if _show_tile_values else "OFF"])
+		KEY_ENTER:
+			if _area_selector.is_ready():
+				_apply_area_action()
 		KEY_ESCAPE:
-			if tool_mode == 4:
+			if _area_selector.has_active_selection:
+				_area_selector.remove_last_point()
+				_needs_rebuild = true
+			elif tool_mode == 4:
 				_cancel_placement()
 			else:
 				_set_tool(0)
@@ -453,9 +481,11 @@ func _set_tool(mode: int) -> void:
 	if tool_mode == 4 and mode != 4:
 		_remove_ghost()
 	tool_mode = mode
-	_level_target = Vector3i(999999, 999999, -1999998)
+	_level_target = INVALID_HEX
 	_flatten_captured = false
 	painting = false
+	_area_selector.clear()
+	_needs_rebuild = true
 	_update_tool_buttons()
 	_update_tool_ui()
 
@@ -791,6 +821,34 @@ func _raise_at(_screen_pos: Vector2) -> void:
 	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
 		return
+	_raise_hex(hex)
+
+
+func _flatten_at(_screen_pos: Vector2) -> void:
+	var hex := _get_mouse_hex()
+	if not _cell_exists(hex):
+		return
+	if not _flatten_captured:
+		var cell: HexCellData = cells[hex]
+		_flatten_target = cell.elevation
+		_flatten_captured = true
+	_flatten_hex(hex)
+
+
+func _level_at(_screen_pos: Vector2) -> void:
+	var hex := _get_mouse_hex()
+	if not _cell_exists(hex):
+		return
+	if _level_target == INVALID_HEX:
+		_level_target = hex
+		_tool_flash("Level target set: (%d,%d,%d)" % [hex.x, hex.y, hex.z])
+		return
+	_level_hex(hex)
+
+
+func _raise_hex(hex: Vector3i) -> void:
+	if not _cell_exists(hex):
+		return
 	var cell: HexCellData = cells[hex]
 	var hex_width: float = HEX_SIZE * 1.73205080757
 	var step := elevation_step if elevation_step > 0.0 else 0.1
@@ -806,14 +864,10 @@ func _raise_at(_screen_pos: Vector2) -> void:
 		_enemy_manager.notify_cell_changed(hex)
 
 
-func _flatten_at(_screen_pos: Vector2) -> void:
-	var hex := _get_mouse_hex()
+func _flatten_hex(hex: Vector3i) -> void:
 	if not _cell_exists(hex):
 		return
 	var cell: HexCellData = cells[hex]
-	if not _flatten_captured:
-		_flatten_target = cell.elevation
-		_flatten_captured = true
 	cell.elevation = _flatten_target
 	_needs_rebuild = true
 	_rebuild_chunk_for_hex(hex)
@@ -821,13 +875,8 @@ func _flatten_at(_screen_pos: Vector2) -> void:
 		_enemy_manager.notify_cell_changed(hex)
 
 
-func _level_at(_screen_pos: Vector2) -> void:
-	var hex := _get_mouse_hex()
+func _level_hex(hex: Vector3i) -> void:
 	if not _cell_exists(hex):
-		return
-	if _level_target == INVALID_HEX:
-		_level_target = hex
-		_tool_flash("Level target set: (%d,%d,%d)" % [hex.x, hex.y, hex.z])
 		return
 	if hex == _level_target:
 		return
@@ -841,6 +890,27 @@ func _level_at(_screen_pos: Vector2) -> void:
 	_rebuild_chunk_for_hex(hex)
 	if _enemy_manager:
 		_enemy_manager.notify_cell_changed(hex)
+
+
+func _apply_area_action() -> void:
+	if not _area_selector.is_ready():
+		return
+	var hexes := _area_selector.selected_hexes
+	match tool_mode:
+		1:
+			for hex in hexes:
+				_raise_hex(hex)
+			_tool_flash("Raised %d hexes" % hexes.size())
+		2:
+			for hex in hexes:
+				_flatten_hex(hex)
+			_tool_flash("Flattened %d hexes" % hexes.size())
+		3:
+			for hex in hexes:
+				_level_hex(hex)
+			_tool_flash("Leveled %d hexes to target" % hexes.size())
+	_area_selector.clear()
+	_needs_rebuild = true
 
 
 func _rebuild_chunk_for_hex(hex: Vector3i) -> void:
@@ -1246,6 +1316,9 @@ func _rebuild_overlay_mesh() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
+	var n_up := Vector3.UP
+	st.set_normal(n_up)
+
 	var mouse_hex := _cached_mouse_hex if _mouse_hex_valid else _get_mouse_hex()
 	var chunk_size := 10
 	var ck_q := floori(float(mouse_hex.x) / chunk_size)
@@ -1290,8 +1363,32 @@ func _rebuild_overlay_mesh() -> void:
 			var height := _get_cell_height(cell) + 0.06
 			_add_flat_hex_tris(st, Vector3(hpos.x, height, hpos.z), HEX_SIZE, Color(0.3, 0.8, 0.3, 0.25))
 
+	if _show_tile_values:
+		for q in range(ck_q * chunk_size, (ck_q + 1) * chunk_size):
+			for r in range(ck_r * chunk_size, (ck_r + 1) * chunk_size):
+				var hex := Vector3i(q, r, -q - r)
+				if not cells.has(hex):
+					continue
+				var cell: HexCellData = cells[hex]
+				var val := _tile_valuator.compute_tile_value(hex, cell.elevation)
+				var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+				var height := _get_cell_height(cell) + 0.05
+				var center := Vector3(hpos.x, height, hpos.z)
+				var intensity := val * 0.7 + 0.3
+				var col := Color(intensity * 0.2, intensity, intensity * 0.1, 0.5)
+				_add_flat_hex_tris(st, center, HEX_SIZE, col)
+
+	if _area_selector.has_active_selection:
+		for hex in _area_selector.selected_hexes:
+			if not cells.has(hex):
+				continue
+			var cell: HexCellData = cells[hex]
+			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+			var height := _get_cell_height(cell) + 0.07
+			var col := Color(0.9, 0.9, 0.2, 0.3) if _area_selector.is_ready() else Color(0.2, 0.6, 0.9, 0.4)
+			_add_flat_hex_tris(st, Vector3(hpos.x, height, hpos.z), HEX_SIZE, col)
+
 	var mesh := st.commit()
-	mesh.lightmap_unwrap(Transform3D.IDENTITY, 0.0)
 	_overlay_mesh_instance.mesh = mesh
 
 
@@ -1437,6 +1534,43 @@ func _setup_top_toolbar(canvas: CanvasLayer) -> void:
 		btn.custom_minimum_size = Vector2(90, 26)
 		_top_toolbar.add_child(btn)
 		_tool_buttons.append(btn)
+
+	var sep := VSeparator.new()
+	sep.custom_minimum_size = Vector2(8, 26)
+	_top_toolbar.add_child(sep)
+
+	var overlay_btn := Button.new()
+	overlay_btn.text = "Overlay [H]"
+	overlay_btn.toggle_mode = true
+	overlay_btn.pressed.connect(func():
+		show_overlay = not show_overlay
+		overlay_btn.button_pressed = show_overlay
+		_needs_rebuild = true
+	)
+	overlay_btn.custom_minimum_size = Vector2(90, 26)
+	_top_toolbar.add_child(overlay_btn)
+
+	var res_btn := Button.new()
+	res_btn.text = "Resources [J]"
+	res_btn.toggle_mode = true
+	res_btn.pressed.connect(func():
+		show_resources = not show_resources
+		res_btn.button_pressed = show_resources
+		_needs_rebuild = true
+	)
+	res_btn.custom_minimum_size = Vector2(90, 26)
+	_top_toolbar.add_child(res_btn)
+
+	var val_btn := Button.new()
+	val_btn.text = "Values [Tab]"
+	val_btn.toggle_mode = true
+	val_btn.pressed.connect(func():
+		_show_tile_values = not _show_tile_values
+		val_btn.button_pressed = _show_tile_values
+		_needs_rebuild = true
+	)
+	val_btn.custom_minimum_size = Vector2(90, 26)
+	_top_toolbar.add_child(val_btn)
 
 
 func _setup_left_menu(canvas: CanvasLayer) -> void:
@@ -1857,6 +1991,8 @@ func _on_flat() -> void:
 func _on_terrain_ready(msg: String) -> void:
 	_label.text = msg
 	_apply_all_uniforms()
+	_recompute_all_resources()
+	_rebuild_decorations()
 
 
 func _terrain_free() -> void:

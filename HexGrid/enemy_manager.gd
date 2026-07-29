@@ -4,6 +4,7 @@ const HEX_SIZE: float = 1.1547
 const MAX_PATH_STEPS: int = 120
 const SPAWN_DISTANCE_MIN: int = 3
 const SEARCH_RADIUS: int = 2
+const TARGET_RADIUS: int = 2
 const BIOME_DEEP_WATER: int = 0
 const BIOME_WATER: int = 1
 const SUB_STEPS: int = 4
@@ -29,6 +30,9 @@ var _water_spawns_dirty: bool = true
 var _water_count: int = 0
 var _last_cell_count: int = 0
 var _rebuild_timer: float = 0.0
+var _spawn_ring_index: int = 0
+var _spawn_ring_buckets: Array[Array] = []
+var _spawn_distribution: Array[int] = []
 
 var _active_count: int = 0
 var _slot_alive: PackedByteArray
@@ -221,17 +225,47 @@ func _rebuild_water_spawns() -> void:
 	_water_spawns.clear()
 	_water_hexes.clear()
 	_water_count = 0
+	_water_spawns_dirty = false
+
+	var ring_max := 0
 	for hex in cells:
 		var cell: HexCellData = cells[hex]
-		if cell.biome == BIOME_DEEP_WATER or cell.biome == BIOME_WATER:
-			var dist: int = maxi(maxi(absi(hex.x), absi(hex.y)), absi(hex.z))
-			if dist >= SPAWN_DISTANCE_MIN:
-				var pos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-				var h := _get_height_from_cell(cell)
-				_water_spawns.append(Vector3(pos.x, h, pos.z))
-				_water_hexes.append(hex)
-				_water_count += 1
-	_water_spawns_dirty = false
+		if cell.biome != BIOME_DEEP_WATER and cell.biome != BIOME_WATER:
+			continue
+		var dist: int = maxi(maxi(absi(hex.x), absi(hex.y)), absi(hex.z))
+		if dist >= SPAWN_DISTANCE_MIN:
+			ring_max = maxi(ring_max, dist)
+
+	_water_spawns.resize(MAX_ENEMIES)
+	_water_hexes.resize(MAX_ENEMIES)
+
+	var rings_per_spawn := 8
+	var ring_step := maxi(ring_max / rings_per_spawn, 1)
+	_spawn_ring_buckets.clear()
+	_spawn_ring_buckets.resize(rings_per_spawn)
+	_spawn_distribution.resize(rings_per_spawn)
+	_spawn_distribution.fill(0)
+
+	for hex in cells:
+		var cell: HexCellData = cells[hex]
+		if cell.biome != BIOME_DEEP_WATER and cell.biome != BIOME_WATER:
+			continue
+		var dist: int = maxi(maxi(absi(hex.x), absi(hex.y)), absi(hex.z))
+		if dist >= SPAWN_DISTANCE_MIN:
+			var ring_bucket := mini((dist - SPAWN_DISTANCE_MIN) / ring_step, rings_per_spawn - 1)
+			var pos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
+			var h := _get_height_from_cell(cell)
+			_spawn_ring_buckets[ring_bucket].append({
+				"pos": Vector3(pos.x, h, pos.z),
+				"hex": hex
+			})
+			_spawn_distribution[ring_bucket] += 1
+
+	_water_count = 0
+	for bucket in _spawn_ring_buckets:
+		_water_count += bucket.size()
+
+	_spawn_ring_index = 0
 
 
 func _process(delta: float) -> void:
@@ -308,9 +342,26 @@ func _try_spawn_one() -> void:
 		_rebuild_water_spawns()
 	if _water_count == 0:
 		return
-	var ridx: int = randi() % _water_count
-	var spawn_pos: Vector3 = _water_spawns[ridx]
-	var spawn_hex: Vector3i = _water_hexes[ridx]
+
+	var attempts := 0
+	var spawn_pos: Vector3
+	var spawn_hex: Vector3i
+	var found := false
+	while attempts < _spawn_ring_buckets.size() and not found:
+		if _spawn_ring_buckets[_spawn_ring_index].is_empty():
+			_spawn_ring_index = (_spawn_ring_index + 1) % _spawn_ring_buckets.size()
+			attempts += 1
+			continue
+		var bucket := _spawn_ring_buckets[_spawn_ring_index]
+		var ridx: int = randi() % bucket.size()
+		spawn_pos = bucket[ridx]["pos"]
+		spawn_hex = bucket[ridx]["hex"]
+		found = true
+		_spawn_ring_index = (_spawn_ring_index + 1) % _spawn_ring_buckets.size()
+
+	if not found:
+		return
+
 	var hex_path := _compute_path(spawn_hex)
 	if hex_path.is_empty():
 		return
@@ -420,12 +471,14 @@ func _compute_path(start: Vector3i) -> Array:
 	var path: Array[Vector3i] = []
 	var current := start
 	var on_land := false
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(current)
 	for _step in MAX_PATH_STEPS:
 		var cd: int = maxi(maxi(absi(current.x), absi(current.y)), absi(current.z))
-		if cd <= 1:
+		if cd <= TARGET_RADIUS:
 			path.append(Vector3i.ZERO)
 			break
-		var best_hex := current
+		var candidates: Array[Vector3i] = []
 		var best_dist := cd
 		for dq in range(-SEARCH_RADIUS, SEARCH_RADIUS + 1):
 			for dr in range(-SEARCH_RADIUS, SEARCH_RADIUS + 1):
@@ -436,7 +489,7 @@ func _compute_path(start: Vector3i) -> Array:
 					continue
 				var candidate := current + Vector3i(dq, dr, ds)
 				var c_dist: int = maxi(maxi(absi(candidate.x), absi(candidate.y)), absi(candidate.z))
-				if c_dist >= best_dist:
+				if c_dist > best_dist:
 					continue
 				if not cells.has(candidate):
 					if chunk_manager:
@@ -446,21 +499,23 @@ func _compute_path(start: Vector3i) -> Array:
 					else:
 						continue
 				var c_cell: HexCellData = cells[candidate]
-				if not on_land and (c_cell.biome == BIOME_DEEP_WATER or c_cell.biome == BIOME_WATER):
-					best_hex = candidate
-					best_dist = c_dist
-					continue
 				if on_land and (c_cell.biome == BIOME_DEEP_WATER or c_cell.biome == BIOME_WATER):
 					continue
-				best_hex = candidate
-				best_dist = c_dist
-		if best_hex == current:
+				if c_dist < best_dist:
+					candidates.clear()
+					best_dist = c_dist
+				candidates.append(candidate)
+
+		if candidates.is_empty():
 			break
-		if not on_land and cells.has(best_hex):
-			var bc: HexCellData = cells[best_hex]
+
+		var pick: Vector3i = candidates[rng.randi() % candidates.size()]
+
+		if not on_land and cells.has(pick):
+			var bc: HexCellData = cells[pick]
 			if bc.biome != BIOME_DEEP_WATER and bc.biome != BIOME_WATER:
 				on_land = true
-		current = best_hex
+		current = pick
 		path.append(current)
 	return path
 
