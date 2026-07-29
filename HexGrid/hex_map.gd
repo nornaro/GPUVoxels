@@ -132,7 +132,7 @@ var _overlay_rebuild_timer: float = 0.0
 
 var _overlay_mesh_instance: MeshInstance3D
 var _tool_flash_timer: float = 0.0
-var _last_hover_hex: Vector3i = Vector3i(999999, 999999, -1999998)
+var _last_hover_hex: Vector3i = INVALID_HEX
 
 var _top_toolbar: HBoxContainer
 var _tool_label: Label
@@ -1259,7 +1259,7 @@ func _get_sub_hex_local_pos(_parent_hex: Vector3i, sub_idx: int) -> Vector2:
 func _get_corner_enorm(cell: HexCellData, corner_idx: int) -> float:
 	var avg_e: float = cell.elevation
 	var count: int = 1
-	var hex: Vector3i = cell.hex
+	var hex: Vector3i = cell.coords
 	var n1: Vector3i = hex + HexGridMath.cube_direction(VERTEX_NEIGHBORS[corner_idx][0])
 	var n2: Vector3i = hex + HexGridMath.cube_direction(VERTEX_NEIGHBORS[corner_idx][1])
 	if cells.has(n1):

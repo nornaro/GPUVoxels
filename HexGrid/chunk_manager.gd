@@ -101,6 +101,12 @@ func _compile_gpu_shader() -> void:
 	if rd == null:
 		print("ChunkManager: No RenderingDevice, CPU only")
 		return
+
+	if _gpu_shader != RID():
+		rd.free_rid(_gpu_shader)
+	if _gpu_pipeline != RID():
+		rd.free_rid(_gpu_pipeline)
+
 	var shader_file = load("res://shaders/compute_noise.glsl")
 	if shader_file == null:
 		print("ChunkManager: No compute shader file, CPU only")

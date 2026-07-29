@@ -227,7 +227,7 @@ func _rebuild_water_spawns() -> void:
 	_water_count = 0
 	_water_spawns_dirty = false
 
-	var ring_max := 0
+	var 	ring_max := SPAWN_DISTANCE_MIN
 	for hex in cells:
 		var cell: HexCellData = cells[hex]
 		if cell.biome != BIOME_DEEP_WATER and cell.biome != BIOME_WATER:
@@ -235,9 +235,6 @@ func _rebuild_water_spawns() -> void:
 		var dist: int = maxi(maxi(absi(hex.x), absi(hex.y)), absi(hex.z))
 		if dist >= SPAWN_DISTANCE_MIN:
 			ring_max = maxi(ring_max, dist)
-
-	_water_spawns.resize(MAX_ENEMIES)
-	_water_hexes.resize(MAX_ENEMIES)
 
 	var rings_per_spawn := 8
 	var ring_step := maxi(ring_max / rings_per_spawn, 1)
@@ -467,7 +464,7 @@ func _upload_enemy(slot: int, _spawn_hex: Vector3i, world_pos: Vector3, hex_path
 		_gpu_path_data.slice(poff * 3, poff * 3 + plen * 3).to_byte_array())
 
 
-func _compute_path(start: Vector3i) -> Array:
+func _compute_path(start: Vector3i) -> Array[Vector3i]:
 	var path: Array[Vector3i] = []
 	var current := start
 	var on_land := false
