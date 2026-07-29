@@ -48,6 +48,10 @@ var _detail_noise: FastNoiseLite
 var _gpu_available: bool = false
 var _gpu_shader: RID
 var _gpu_pipeline: RID
+var _params_buf: RID
+var _origins_buf: RID
+var _output_buf: RID
+var _gpu_uniform_set: RID
 
 var cells: Dictionary
 var _loaded_chunk_origins: Dictionary = {}
@@ -120,6 +124,14 @@ func cleanup() -> void:
 	if _gpu_available:
 		var rd := RenderingServer.get_rendering_device()
 		if rd != null:
+			if _gpu_uniform_set != RID():
+				rd.free_rid(_gpu_uniform_set)
+			if _output_buf != RID():
+				rd.free_rid(_output_buf)
+			if _origins_buf != RID():
+				rd.free_rid(_origins_buf)
+			if _params_buf != RID():
+				rd.free_rid(_params_buf)
 			if _gpu_pipeline != RID():
 				rd.free_rid(_gpu_pipeline)
 			if _gpu_shader != RID():
@@ -172,7 +184,90 @@ func generate_batch(batch: Array) -> void:
 
 
 func _generate_batch_gpu(batch: Array, bs: int) -> void:
-	_generate_batch_cpu(batch, bs)
+	var rd := RenderingServer.get_rendering_device()
+	if rd == null or not _gpu_available:
+		_generate_batch_cpu(batch, bs)
+		return
+
+	var params := PackedFloat32Array([
+		float(CHUNK_SIZE), float(bs),
+		noise_freq, float(noise_seed),
+		detail_freq, float(detail_seed),
+		float(fractal_octaves), fractal_lacunarity, fractal_gain,
+		float(detail_octaves), detail_lacunarity, detail_gain,
+		warp_strength, moisture_freq, float(moisture_seed), 0.0
+	])
+	_params_buf = rd.storage_buffer_create(params.size() * 4, params.to_byte_array())
+
+	var origins := PackedInt32Array()
+	for ci in bs:
+		var ck: Vector2i = batch[ci]
+		origins.append(ck.x)
+		origins.append(ck.y)
+	_origins_buf = rd.storage_buffer_create(origins.size() * 4, origins.to_byte_array())
+
+	var out_size: int = bs * CELLS_PER_CHUNK * FLOATS_PER_CELL
+	var out_bytes: int = out_size * 4
+	_output_buf = rd.storage_buffer_create(out_bytes)
+
+	var params_uniform := RDUniform.new()
+	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	params_uniform.binding = 0
+	params_uniform.add_id(_params_buf)
+
+	var origins_uniform := RDUniform.new()
+	origins_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	origins_uniform.binding = 1
+	origins_uniform.add_id(_origins_buf)
+
+	var output_uniform := RDUniform.new()
+	output_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	output_uniform.binding = 2
+	output_uniform.add_id(_output_buf)
+
+	_gpu_uniform_set = rd.uniform_set_create([params_uniform, origins_uniform, output_uniform], _gpu_shader, 0)
+
+	var cl := rd.compute_list_begin()
+	rd.compute_list_bind_compute_pipeline(cl, _gpu_pipeline)
+	rd.compute_list_bind_uniform_set(cl, _gpu_uniform_set, 0)
+	var wg_x := ceili(float(CHUNK_SIZE) / 10.0)
+	var wg_y := ceili(float(CHUNK_SIZE) / 10.0)
+	rd.compute_list_dispatch(cl, wg_x, wg_y, bs)
+	rd.compute_list_end()
+
+	var raw: PackedByteArray = rd.buffer_get_data(_output_buf, 0, out_bytes)
+	rd.free_rid(_params_buf)
+	rd.free_rid(_origins_buf)
+	rd.free_rid(_output_buf)
+	rd.free_rid(_gpu_uniform_set)
+
+	if raw.size() < out_bytes:
+		_generate_batch_cpu(batch, bs)
+		return
+
+	var floats := raw.to_float32_array()
+	for ci in bs:
+		var ck: Vector2i = batch[ci]
+		if _loaded_chunk_origins.has(ck):
+			continue
+		_loaded_chunk_origins[ck] = true
+		var base_q: int = ck.x * CHUNK_SIZE
+		var base_r: int = ck.y * CHUNK_SIZE
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				var q: int = base_q + cx
+				var r: int = base_r + cy
+				var hex := Vector3i(q, r, -q - r)
+				if cells.has(hex):
+					continue
+				var cell_idx: int = (ci * CELLS_PER_CHUNK + cx * CHUNK_SIZE + cy) * FLOATS_PER_CELL
+				var elevation: float = floats[cell_idx]
+				var biome: int = int(floats[cell_idx + 1])
+				var cell := HexCellData.new(hex, biome, elevation)
+				cell.color = BIOME_COLORS[clampi(biome, 0, BIOME_COLORS.size() - 1)]
+				for si in TOTAL_SUBS:
+					cell.sub_heights[si] = floats[cell_idx + 2 + si]
+				cells[hex] = cell
 
 
 func _generate_batch_cpu(batch: Array, bs: int) -> void:

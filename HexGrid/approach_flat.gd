@@ -13,7 +13,7 @@ const VERTEX_NEIGHBORS: Array = [
 	[0, 1], [0, 5], [5, 4], [4, 3], [3, 2], [2, 1],
 ]
 
-const CHunks_PER_FRAME: int = 2
+const CHUNKS_PER_FRAME: int = 1
 
 var grid_radius: int = 100
 var _shared_mat: ShaderMaterial
@@ -33,12 +33,29 @@ func _ready() -> void:
 		var angle := deg_to_rad(60.0 * float(i))
 		_corners_x.append(cos(angle) * HEX_SIZE)
 		_corners_z.append(sin(angle) * HEX_SIZE)
+	var cam := get_viewport().get_camera_3d()
+	if cam:
+		var qf := cam.global_position.x / HEX_SIZE_X15
+		var rf := cam.global_position.z / HEX_SIZE_SQRT3 - qf * 0.5
+		var cq := floori(qf / CHUNK_HEXES)
+		var cr := floori(rf / CHUNK_HEXES)
+		_update_chunks(Vector2i(cq, cr), true)
+	else:
+		_update_chunks(Vector2i(999999, 999999), true)
 	var t := Time.get_ticks_msec()
-	_update_chunks(Vector2i(999999, 999999), true)
-	while not _chunk_queue.is_empty():
-		_generate_chunk(_chunk_queue.pop_front())
+	var cells_dict: Dictionary = get_parent().get("cells") if get_parent() else {}
+	var cm = get_parent().get("chunk_manager") if get_parent() else null
+	for key in _chunk_queue:
+		var q_lo := maxi(key.x * CHUNK_HEXES, -grid_radius)
+		var q_hi := mini(q_lo + CHUNK_HEXES - 1, grid_radius)
+		if key.x * CHUNK_HEXES < -grid_radius:
+			q_lo = -grid_radius
+			q_hi = mini(q_lo + CHUNK_HEXES - 1, grid_radius)
+		var r_min_global := maxi(-grid_radius, key.y * CHUNK_HEXES)
+		var r_max_global := mini(grid_radius, key.y * CHUNK_HEXES + CHUNK_HEXES - 1)
+		_batch_generate_cells(q_lo, q_hi, r_min_global, r_max_global, cells_dict, cm)
 	var elapsed := (Time.get_ticks_msec() - t) / 1000.0
-	print("[Approach B] Done in %.2fs" % elapsed)
+	print("[Approach B] Queued %d chunks, pre-generated cells in %.2fs" % [_chunk_queue.size(), elapsed])
 
 
 func _process(_delta: float) -> void:
@@ -53,7 +70,7 @@ func _process(_delta: float) -> void:
 	if cc != _last_cam_chunk:
 		_last_cam_chunk = cc
 		_update_chunks(cc, false)
-	for _i in CHunks_PER_FRAME:
+	for _i in CHUNKS_PER_FRAME:
 		if _chunk_queue.is_empty():
 			break
 		_generate_chunk(_chunk_queue.pop_front())

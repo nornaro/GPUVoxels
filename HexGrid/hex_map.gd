@@ -48,6 +48,8 @@ const MINERAL_COLORS := {
 }
 const RESOURCE_OIL_COLOR := Color(0.15, 0.15, 0.15, 0.6)
 
+const INVALID_HEX := Vector3i(999999, 999999, -1999998)
+
 const WALL_BASE := "res://assets/kaykit_medieval_hexagon_pack/buildings/neutral/"
 
 const WALL_TYPE_STRAIGHT := 0
@@ -74,6 +76,8 @@ var cells: Dictionary = {}
 var chunk_manager: ChunkManager
 var _terrain: Node3D = null
 var _current_approach: String = ""
+var _world: Node3D = null
+var _gameplay: Node3D = null
 
 var camera: Camera3D
 var cam_yaw: float = 45.0
@@ -112,13 +116,13 @@ var _ghost_model_path: String = ""
 var _ghost_indicators: Node3D = null
 var _indicator_mesh: SphereMesh
 
-var _level_target: Vector3i = Vector3i(999999, 999999, -1999998)
+var _level_target: Vector3i = INVALID_HEX
 var _flatten_target: float = 0.0
 var _flatten_captured: bool = false
 
 var _needs_rebuild: bool = false
-var _last_overlay_hex: Vector3i = Vector3i(999999, 999999, -1999998)
-var _cached_mouse_hex: Vector3i = Vector3i(999999, 999999, -1999998)
+var _last_overlay_hex: Vector3i = INVALID_HEX
+var _cached_mouse_hex: Vector3i = INVALID_HEX
 var _mouse_hex_valid: bool = false
 var _overlay_rebuild_timer: float = 0.0
 
@@ -149,18 +153,45 @@ var _exp_label: Label
 var _exp_input: LineEdit
 
 var _cursor_instance: MeshInstance3D
-var _last_cursor_hex: Vector3i = Vector3i(999999, 999999, -1999998)
+var _last_cursor_hex: Vector3i = INVALID_HEX
+var _enemy_manager: Node3D
+var _spawn_rate_slider: HSlider
+var _max_enemies_slider: HSlider
+var _spawn_rate_label: Label
+var _max_enemies_label: Label
+var _spawn_batch_slider: HSlider
+var _spawn_batch_label: Label
+var _mob_print_timer: float = 10.0
 
 
 func _ready() -> void:
 	chunk_manager = ChunkManager.new(cells)
+
+	_world = Node3D.new()
+	_world.name = "World"
+	add_child(_world)
 	_setup_lighting()
 	_setup_camera()
+
+	_gameplay = Node3D.new()
+	_gameplay.name = "Gameplay"
+	add_child(_gameplay)
+
 	_objects_container = Node3D.new()
-	add_child(_objects_container)
+	_gameplay.add_child(_objects_container)
+
+	_enemy_manager = preload("res://HexGrid/enemy_manager.gd").new()
+	_enemy_manager.name = "EnemyManager"
+	_gameplay.add_child(_enemy_manager)
+	_enemy_manager.setup(cells, chunk_manager)
+	_enemy_manager.spawn_interval = 2.0
+	_enemy_manager.max_enemies = 30
+	_enemy_manager.spawn_batch_size = 1
+	_enemy_manager.set_max_enemies(30)
+
 	_ghost_indicators = Node3D.new()
 	_ghost_indicators.name = "GhostIndicators"
-	add_child(_ghost_indicators)
+	_gameplay.add_child(_ghost_indicators)
 	_indicator_mesh = SphereMesh.new()
 	_indicator_mesh.radius = 0.15
 	_indicator_mesh.height = 0.3
@@ -176,6 +207,8 @@ func _ready() -> void:
 	_setup_ui()
 	_update_camera_transform()
 	call_deferred("_on_flat")
+	if _height_slider:
+		_enemy_manager.set_height_params(_height_slider.value, _exp_slider.value)
 	print("Ready.")
 
 
@@ -187,6 +220,7 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	_mouse_hex_valid = false
 
+	var _t := Time.get_ticks_usec()
 	_process_orbit()
 	_process_pan()
 	_process_wasd(delta)
@@ -199,6 +233,7 @@ func _process(delta: float) -> void:
 	var cur_hex := _get_mouse_hex()
 	_mouse_hex_valid = true
 	_cached_mouse_hex = cur_hex
+	var t1 := Time.get_ticks_usec()
 
 	_overlay_rebuild_timer -= delta
 
@@ -215,11 +250,24 @@ func _process(delta: float) -> void:
 		_rebuild_overlay_mesh()
 		_needs_rebuild = false
 		_overlay_rebuild_timer = 0.08
+	var t2 := Time.get_ticks_usec()
 
 	if tool_mode == 4:
 		_update_ghost_position(cur_hex)
 	_update_hover_info(cur_hex)
 	_update_cursor(cur_hex)
+	var t3 := Time.get_ticks_usec()
+
+	_mob_print_timer -= delta
+	if _mob_print_timer <= 0.0:
+		_mob_print_timer = 60.0
+		var c = _enemy_manager.get_enemy_count()
+		if c > 0:
+			print("Active mobs: %d / %d" % [c, _enemy_manager.max_enemies])
+
+	var total_dt := Time.get_ticks_usec() - _t
+	if total_dt > 3000:
+		print("PERF: hex_map total=%dus" % [total_dt])
 
 
 func _process_orbit() -> void:
@@ -249,7 +297,7 @@ func _process_pan() -> void:
 	else:
 		flat_forward = Vector3.FORWARD
 	var pan_speed := cam_dist * 0.002
-	cam_pivot = pan_origin - flat_right * diff.x * pan_speed - flat_forward * diff.y * pan_speed
+	cam_pivot = pan_origin - flat_right * diff.x * pan_speed + flat_forward * diff.y * pan_speed
 	_update_camera_transform()
 
 
@@ -423,6 +471,8 @@ func _regenerate_map() -> void:
 	_free_all_object_instances()
 	placed_objects.clear()
 	_needs_rebuild = true
+	if _enemy_manager:
+		_enemy_manager.invalidate_all_paths()
 	if _current_approach != "":
 		if _current_approach == "flat":
 			_on_flat()
@@ -453,6 +503,8 @@ func _load_map_from(path: String) -> bool:
 	resource_cache = loaded.get("resource_cache", {})
 	_recompute_all_resources()
 	_needs_rebuild = true
+	if _enemy_manager:
+		_enemy_manager.invalidate_all_paths()
 	if _current_approach != "":
 		if _current_approach == "flat":
 			_on_flat()
@@ -485,12 +537,12 @@ func _get_mouse_hex() -> Vector3i:
 	var screen_pos := get_viewport().get_mouse_position()
 	var world_pos := _screen_to_world_at_height(screen_pos, 0.0)
 	if world_pos.x == INF:
-		return Vector3i(999999, 999999, -1999998)
+		return INVALID_HEX
 	var hex := HexGridMath.world_to_cube_flat_top(world_pos, HEX_SIZE)
 	for _i in 8:
-		var cell := chunk_manager.get_or_create_cell(hex)
-		if not cell:
+		if not cells.has(hex):
 			break
+		var cell: HexCellData = cells[hex]
 		var height := _get_cell_height(cell)
 		var refined := _screen_to_world_at_height(screen_pos, height)
 		if refined.x == INF:
@@ -503,7 +555,7 @@ func _get_mouse_hex() -> Vector3i:
 
 
 func _cell_exists(hex: Vector3i) -> bool:
-	return chunk_manager.get_or_create_cell(hex) != null
+	return cells.has(hex)
 
 
 func _get_cell_height(cell: HexCellData) -> float:
@@ -517,7 +569,7 @@ func _is_water_biome(biome: int) -> bool:
 	return biome == BIOME_DEEP_WATER or biome == BIOME_WATER
 
 
-func _is_sub_hex_water(hex: Vector3i, sub_idx: int) -> bool:
+func _is_sub_hex_water(hex: Vector3i, _sub_idx: int) -> bool:
 	if not _cell_exists(hex):
 		return false
 	var c: HexCellData = cells[hex]
@@ -750,6 +802,8 @@ func _raise_at(_screen_pos: Vector2) -> void:
 	cell.elevation = clampf(cell.elevation, -1.0, 2.0)
 	_needs_rebuild = true
 	_rebuild_chunk_for_hex(hex)
+	if _enemy_manager:
+		_enemy_manager.notify_cell_changed(hex)
 
 
 func _flatten_at(_screen_pos: Vector2) -> void:
@@ -763,26 +817,30 @@ func _flatten_at(_screen_pos: Vector2) -> void:
 	cell.elevation = _flatten_target
 	_needs_rebuild = true
 	_rebuild_chunk_for_hex(hex)
+	if _enemy_manager:
+		_enemy_manager.notify_cell_changed(hex)
 
 
 func _level_at(_screen_pos: Vector2) -> void:
 	var hex := _get_mouse_hex()
 	if not _cell_exists(hex):
 		return
-	if _level_target == Vector3i(999999, 999999, -1999998):
+	if _level_target == INVALID_HEX:
 		_level_target = hex
 		_tool_flash("Level target set: (%d,%d,%d)" % [hex.x, hex.y, hex.z])
 		return
 	if hex == _level_target:
 		return
 	if not cells.has(_level_target):
-		_level_target = Vector3i(999999, 999999, -1999998)
+		_level_target = INVALID_HEX
 		return
 	var target_cell: HexCellData = cells[_level_target]
 	var cell: HexCellData = cells[hex]
 	cell.elevation = target_cell.elevation
 	_needs_rebuild = true
 	_rebuild_chunk_for_hex(hex)
+	if _enemy_manager:
+		_enemy_manager.notify_cell_changed(hex)
 
 
 func _rebuild_chunk_for_hex(hex: Vector3i) -> void:
@@ -1034,6 +1092,7 @@ func _free_scene_children(node: Node) -> void:
 	for child in node.get_children():
 		node.remove_child(child)
 		child.queue_free()
+	node.queue_free()
 
 
 func _rebuild_decorations() -> void:
@@ -1089,7 +1148,7 @@ func _rebuild_decorations() -> void:
 			mm.set_instance_transform(i, transforms[i])
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
-		add_child(mi)
+		_objects_container.add_child(mi)
 		_decoration_multimeshes[model_path] = mi
 
 
@@ -1184,9 +1243,8 @@ func _get_sub_hex_deformed_height(hex: Vector3i, cell: HexCellData, sub_idx: int
 # OVERLAY MESH
 # ============================================================================
 func _rebuild_overlay_mesh() -> void:
-	var imm := ImmediateMesh.new()
-	imm.clear_surfaces()
-	imm.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
 	var mouse_hex := _cached_mouse_hex if _mouse_hex_valid else _get_mouse_hex()
 	var chunk_size := 10
@@ -1205,7 +1263,7 @@ func _rebuild_overlay_mesh() -> void:
 					var local := _get_sub_hex_local_pos(hex, i)
 					var height := _get_sub_hex_deformed_height(hex, cell, i) + 0.03
 					var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
-					_add_flat_hex_wireframe(imm, center, SUB_HEX_SIZE, Color(1, 1, 1, 0.25))
+					_add_flat_hex_wireframe(st, center, SUB_HEX_SIZE, Color(1, 1, 1, 0.25))
 
 	if show_resources:
 		for q in range(ck_q * chunk_size, (ck_q + 1) * chunk_size):
@@ -1222,7 +1280,7 @@ func _rebuild_overlay_mesh() -> void:
 					var local := _get_sub_hex_local_pos(hex, sub_i)
 					var height := _get_sub_hex_deformed_height(hex, cell, sub_i) + 0.04
 					var center := Vector3(hpos.x + local.x, height, hpos.z + local.y)
-					_add_flat_hex_tris(imm, center, SUB_HEX_SIZE, _get_resource_color(res["type"]))
+					_add_flat_hex_tris(st, center, SUB_HEX_SIZE, _get_resource_color(res["type"]))
 
 	if tool_mode == 4 and not selected_model_path.is_empty():
 		var hex := _cached_mouse_hex if _mouse_hex_valid else _get_mouse_hex()
@@ -1230,29 +1288,29 @@ func _rebuild_overlay_mesh() -> void:
 			var cell: HexCellData = cells[hex]
 			var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
 			var height := _get_cell_height(cell) + 0.06
-			_add_flat_hex_tris(imm, Vector3(hpos.x, height, hpos.z), HEX_SIZE, Color(0.3, 0.8, 0.3, 0.25))
+			_add_flat_hex_tris(st, Vector3(hpos.x, height, hpos.z), HEX_SIZE, Color(0.3, 0.8, 0.3, 0.25))
 
-	imm.surface_end()
-	_overlay_mesh_instance.mesh = imm
+	var mesh := st.commit()
+	mesh.lightmap_unwrap(Transform3D.IDENTITY, 0.0)
+	_overlay_mesh_instance.mesh = mesh
 
 
-func _add_flat_hex_tris(imm: ImmediateMesh, center: Vector3, size: float, col: Color) -> void:
+func _add_flat_hex_tris(st: SurfaceTool, center: Vector3, size: float, col: Color) -> void:
+	st.set_color(col)
 	for i in 6:
 		var angle1 := deg_to_rad(60.0 * float(i))
 		var angle2 := deg_to_rad(60.0 * float((i + 1) % 6))
 		var v1 := center + Vector3(cos(angle1), 0.0, sin(angle1)) * size
 		var v2 := center + Vector3(cos(angle2), 0.0, sin(angle2)) * size
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(center)
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(v1)
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(v2)
+		st.add_vertex(center)
+		st.add_vertex(v1)
+		st.add_vertex(v2)
 
 
-func _add_flat_hex_wireframe(imm: ImmediateMesh, center: Vector3, size: float, col: Color) -> void:
+func _add_flat_hex_wireframe(st: SurfaceTool, center: Vector3, size: float, col: Color) -> void:
 	var up := Vector3.UP * 0.02
 	var thin := 0.015
+	st.set_color(col)
 	for i in 6:
 		var angle1 := deg_to_rad(60.0 * float(i))
 		var angle2 := deg_to_rad(60.0 * float((i + 1) % 6))
@@ -1264,18 +1322,12 @@ func _add_flat_hex_wireframe(imm: ImmediateMesh, center: Vector3, size: float, c
 		var b := v1 - perp + up
 		var c := v2 - perp + up
 		var d := v2 + perp + up
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(a)
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(b)
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(c)
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(a)
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(c)
-		imm.surface_set_color(col)
-		imm.surface_add_vertex(d)
+		st.add_vertex(a)
+		st.add_vertex(b)
+		st.add_vertex(c)
+		st.add_vertex(a)
+		st.add_vertex(c)
+		st.add_vertex(d)
 
 
 # ============================================================================
@@ -1313,16 +1365,13 @@ func _setup_cursor() -> void:
 
 func _update_cursor(hex: Vector3i) -> void:
 	_last_cursor_hex = hex
-	if hex.x == 999999:
+	if hex == INVALID_HEX or not cells.has(hex):
 		_cursor_instance.visible = false
 		return
 	var hpos := HexGridMath.cube_to_world_flat_top(hex, HEX_SIZE)
-	var cell := chunk_manager.get_or_create_cell(hex)
-	if cell:
-		var height := _get_cell_height(cell)
-		_cursor_instance.position = Vector3(hpos.x, height + 0.15, hpos.z)
-	else:
-		_cursor_instance.position = Vector3(hpos.x, 0.15, hpos.z)
+	var cell: HexCellData = cells[hex]
+	var height := _get_cell_height(cell)
+	_cursor_instance.position = Vector3(hpos.x, height + 0.15, hpos.z)
 	_cursor_instance.visible = true
 
 
@@ -1531,6 +1580,57 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	var sep3 := HSeparator.new()
 	vbox.add_child(sep3)
 
+	_spawn_rate_label = Label.new()
+	_spawn_rate_label.text = "Spawn Rate: 2.0s"
+	_spawn_rate_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(_spawn_rate_label)
+	_spawn_rate_slider = HSlider.new()
+	_spawn_rate_slider.min_value = 0.2
+	_spawn_rate_slider.max_value = 10.0
+	_spawn_rate_slider.step = 0.1
+	_spawn_rate_slider.value = 2.0
+	_spawn_rate_slider.custom_minimum_size = Vector2(180, 0)
+	_spawn_rate_slider.value_changed.connect(func(val: float) -> void:
+		_spawn_rate_label.text = "Spawn Rate: %.1fs" % val
+		_enemy_manager.spawn_interval = val
+	)
+	vbox.add_child(_spawn_rate_slider)
+
+	_max_enemies_label = Label.new()
+	_max_enemies_label.text = "Max Enemies: 30"
+	_max_enemies_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(_max_enemies_label)
+	_max_enemies_slider = HSlider.new()
+	_max_enemies_slider.min_value = 0
+	_max_enemies_slider.max_value = 20000
+	_max_enemies_slider.step = 100
+	_max_enemies_slider.value = 30
+	_max_enemies_slider.custom_minimum_size = Vector2(180, 0)
+	_max_enemies_slider.value_changed.connect(func(val: float) -> void:
+		_max_enemies_label.text = "Max Enemies: %d" % int(val)
+		_enemy_manager.set_max_enemies(int(val))
+	)
+	vbox.add_child(_max_enemies_slider)
+
+	_spawn_batch_label = Label.new()
+	_spawn_batch_label.text = "Spawn Batch: 1"
+	_spawn_batch_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(_spawn_batch_label)
+	_spawn_batch_slider = HSlider.new()
+	_spawn_batch_slider.min_value = 0
+	_spawn_batch_slider.max_value = 10000
+	_spawn_batch_slider.step = 100
+	_spawn_batch_slider.value = 1
+	_spawn_batch_slider.custom_minimum_size = Vector2(180, 0)
+	_spawn_batch_slider.value_changed.connect(func(val: float) -> void:
+		_spawn_batch_label.text = "Spawn Batch: %d" % int(val)
+		_enemy_manager.spawn_batch_size = int(val)
+	)
+	vbox.add_child(_spawn_batch_slider)
+
+	var sep4 := HSeparator.new()
+	vbox.add_child(sep4)
+
 	_label = Label.new()
 	_label.text = "Pick an approach"
 	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1674,11 +1774,17 @@ func _on_radius_changed(value: float) -> void:
 func _on_height_changed(value: float) -> void:
 	_height_input.text = "%.1f" % value
 	_apply_uniform("height_step", value)
+	if _enemy_manager:
+		_enemy_manager.set_height_params(value, _exp_slider.value)
+		_enemy_manager.invalidate_all_paths()
 
 
 func _on_exp_changed(value: float) -> void:
 	_exp_input.text = "%.1f" % value
 	_apply_uniform("height_exp", value)
+	if _enemy_manager:
+		_enemy_manager.set_height_params(_height_slider.value, value)
+		_enemy_manager.invalidate_all_paths()
 
 
 func _on_grid_changed(value: float) -> void:
@@ -1719,10 +1825,12 @@ func _on_prisms() -> void:
 	_terrain_free()
 	var script := load("res://HexGrid/approach_prisms.gd") as GDScript
 	_terrain = Node3D.new()
+	_terrain.name = "Terrain"
 	_terrain.set_meta("grid_radius", int(_radius_slider.value))
 	_terrain.set_script(script)
 	add_child(_terrain)
-	move_child(_objects_container, get_child_count() - 1)
+	move_child(_terrain, _world.get_index() + 1)
+	move_child(_gameplay, get_child_count() - 1)
 	move_child(_overlay_mesh_instance, get_child_count() - 1)
 	move_child(_cursor_instance, get_child_count() - 1)
 	_label.text = "Generating hex prisms..."
@@ -1734,10 +1842,12 @@ func _on_flat() -> void:
 	_terrain_free()
 	var script := load("res://HexGrid/approach_flat.gd") as GDScript
 	_terrain = Node3D.new()
+	_terrain.name = "Terrain"
 	_terrain.set_meta("grid_radius", int(_radius_slider.value))
 	_terrain.set_script(script)
 	add_child(_terrain)
-	move_child(_objects_container, get_child_count() - 1)
+	move_child(_terrain, _world.get_index() + 1)
+	move_child(_gameplay, get_child_count() - 1)
 	move_child(_overlay_mesh_instance, get_child_count() - 1)
 	move_child(_cursor_instance, get_child_count() - 1)
 	_label.text = "Generating flat grid..."
@@ -1773,7 +1883,7 @@ func _setup_camera() -> void:
 	camera.fov = 60.0
 	camera.near = 0.1
 	camera.far = 5000.0
-	add_child(camera)
+	_world.add_child(camera)
 
 
 func _setup_lighting() -> void:
@@ -1781,13 +1891,13 @@ func _setup_lighting() -> void:
 	sun.rotation_degrees = Vector3(-50, -30, 0)
 	sun.light_energy = 1.0
 	sun.shadow_enabled = true
-	add_child(sun)
+	_world.add_child(sun)
 
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(30, 150, 0)
 	fill.light_energy = 0.3
 	fill.light_color = Color(0.8, 0.85, 1.0)
-	add_child(fill)
+	_world.add_child(fill)
 
 	var env := Environment.new()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -1795,4 +1905,4 @@ func _setup_lighting() -> void:
 	env.ambient_light_energy = 0.6
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
-	add_child(world_env)
+	_world.add_child(world_env)

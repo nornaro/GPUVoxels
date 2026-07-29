@@ -12,19 +12,36 @@ var _shared_mat: ShaderMaterial
 var _chunks := {}
 var _last_cam_chunk := Vector2i(999999, 999999)
 var _chunk_queue: Array[Vector2i] = []
-const CHUNKS_PER_FRAME: int = 2
+const CHUNKS_PER_FRAME: int = 1
 
 func _ready() -> void:
 	grid_radius = get_meta("grid_radius", 100)
 	_hex_mesh = _create_hex_face_mesh()
 	_shared_mat = ShaderMaterial.new()
 	_shared_mat.shader = load("res://shaders/hex_prism.gdshader")
+	var cam := get_viewport().get_camera_3d()
+	if cam:
+		var qf := cam.global_position.x / HEX_SIZE_X15
+		var rf := cam.global_position.z / HEX_SIZE_SQRT3 - qf * 0.5
+		var cq := floori(qf / CHUNK_HEXES)
+		var cr := floori(rf / CHUNK_HEXES)
+		_update_chunks(Vector2i(cq, cr), true)
+	else:
+		_update_chunks(Vector2i(999999, 999999), true)
 	var t := Time.get_ticks_msec()
-	_update_chunks(Vector2i(999999, 999999), true)
-	while not _chunk_queue.is_empty():
-		_generate_chunk(_chunk_queue.pop_front())
+	var cells_dict: Dictionary = get_parent().get("cells") if get_parent() else {}
+	var cm = get_parent().get("chunk_manager") if get_parent() else null
+	for key in _chunk_queue:
+		var q_lo := maxi(key.x * CHUNK_HEXES, -grid_radius)
+		var q_hi := mini(q_lo + CHUNK_HEXES - 1, grid_radius)
+		if key.x * CHUNK_HEXES < -grid_radius:
+			q_lo = -grid_radius
+			q_hi = mini(q_lo + CHUNK_HEXES - 1, grid_radius)
+		var r_min_global := maxi(-grid_radius, key.y * CHUNK_HEXES)
+		var r_max_global := mini(grid_radius, key.y * CHUNK_HEXES + CHUNK_HEXES - 1)
+		_batch_generate_cells(q_lo, q_hi, r_min_global, r_max_global, cells_dict, cm)
 	var elapsed := (Time.get_ticks_msec() - t) / 1000.0
-	print("[Approach A] Done in %.2fs" % elapsed)
+	print("[Approach A] Queued %d chunks, pre-generated cells in %.2fs" % [_chunk_queue.size(), elapsed])
 
 
 func _process(_delta: float) -> void:
