@@ -103,7 +103,7 @@ func _convex_hull(points: Array[Vector3i]) -> Array[Vector3i]:
 
 	var upper: Array[Vector3i] = []
 	for i in range(sorted.size() - 1, -1, -1):
-		var p := sorted[i]
+		var p: Vector3i = sorted[i]
 		while upper.size() >= 2 and _cross(upper[upper.size() - 2], upper[upper.size() - 1], p) <= 0:
 			upper.pop_back()
 		upper.append(p)

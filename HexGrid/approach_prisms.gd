@@ -170,7 +170,7 @@ func _generate_chunk(key: Vector2i) -> void:
 				if cell:
 					elevation = cell.elevation
 					biome = cell.biome
-			var e_norm := clampf(elevation / 4.0, 0.0, 1.0)
+			var e_norm := clampf(elevation, 0.0, 1.0)
 			var biome_norm := float(biome) / 10.0
 			transforms.append(Transform3D(Transform3D.IDENTITY.basis, Vector3(x, 0.0, cz)))
 			custom_data.append(Color(e_norm, biome_norm, 0.0, 1.0))

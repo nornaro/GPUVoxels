@@ -8,21 +8,20 @@ const HEX_SIZE: float = 1.1547
 const CELLS_PER_CHUNK: int = CHUNK_SIZE * CHUNK_SIZE
 const FLOATS_PER_CELL: int = 15
 
-const BIOME_DEEP_WATER := 0
-const BIOME_WATER := 1
-const BIOME_BEACH := 2
-const BIOME_GRASS := 3
-const BIOME_DIRT := 4
-const BIOME_STONE := 5
+const BIOME_WATER := 0
+const BIOME_BEACH := 1
+const BIOME_GRASS := 2
+const BIOME_DIRT := 3
+const BIOME_STONE := 4
+const BIOME_SNOW := 5
 
 const BIOME_COLORS: Array = [
-	Color(0.35, 0.30, 0.30, 1.0),
-	Color(0.70, 0.60, 0.60, 0.7),
+	Color(0.20, 0.40, 0.70, 1.0),
 	Color(0.82, 0.77, 0.55, 1.0),
 	Color(0.35, 0.55, 0.28, 1.0),
-	Color(0.55, 0.42, 0.28, 1.0),
+	Color(0.28, 0.45, 0.18, 1.0),
 	Color(0.48, 0.48, 0.48, 1.0),
-	Color(0.32, 0.55, 0.82, 1.0),
+	Color(0.85, 0.85, 0.90, 1.0),
 ]
 
 const BINARY_MAGIC: int = 0x48564D50
@@ -44,6 +43,7 @@ var moisture_seed: int = 7777
 
 var _noise: FastNoiseLite
 var _detail_noise: FastNoiseLite
+var _moisture_noise: FastNoiseLite
 
 var _gpu_available: bool = false
 var _gpu_shader: RID
@@ -92,6 +92,14 @@ func _init_noise() -> void:
 	_detail_noise.fractal_octaves = detail_octaves
 	_detail_noise.fractal_lacunarity = detail_lacunarity
 	_detail_noise.fractal_gain = detail_gain
+	_moisture_noise = FastNoiseLite.new()
+	_moisture_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_moisture_noise.seed = moisture_seed
+	_moisture_noise.frequency = moisture_freq
+	_moisture_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_moisture_noise.fractal_octaves = 4
+	_moisture_noise.fractal_lacunarity = 2.0
+	_moisture_noise.fractal_gain = 0.5
 	print("ChunkManager: CPU noise init, freq=%.4f octaves=%d" % [noise_freq, fractal_octaves])
 
 
@@ -155,11 +163,13 @@ func get_or_create_cell(hex: Vector3i) -> HexCellData:
 	if not is_initialized():
 		return null
 	var nval: float = _noise.get_noise_2d(float(hex.x), float(hex.y))
-	var biome: int = _classify_biome(nval)
-	var elevation: float = _remap_elevation(biome, nval)
-	var cell := HexCellData.new(hex, biome, elevation)
+	var moisture: float = _moisture_noise.get_noise_2d(float(hex.x), float(hex.y))
+	moisture = clampf(moisture * 0.5 + 0.5, 0.0, 1.0)
+	var e_norm: float = clampf(nval * 0.5 + 0.5, 0.0, 1.0)
+	var biome: int = _classify_biome(e_norm, moisture)
+	var cell := HexCellData.new(hex, biome, e_norm)
 	cell.color = BIOME_COLORS[clampi(biome, 0, BIOME_COLORS.size() - 1)]
-	cell.sub_heights[0] = elevation
+	cell.sub_heights[0] = e_norm
 	const INNER_DIST: float = HEX_SIZE * 0.57735026919
 	const OUTER_DIST: float = HEX_SIZE
 	for i in 6:
@@ -167,13 +177,13 @@ func get_or_create_cell(hex: Vector3i) -> HexCellData:
 		var sub_q: float = float(hex.x) + cos(angle) * INNER_DIST
 		var sub_r: float = float(hex.y) + sin(angle) * INNER_DIST
 		var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
-		cell.sub_heights[i + 1] = elevation + detail
+		cell.sub_heights[i + 1] = e_norm + detail
 	for i in 6:
 		var angle: float = deg_to_rad(60.0 * float(i))
 		var sub_q: float = float(hex.x) + cos(angle) * OUTER_DIST
 		var sub_r: float = float(hex.y) + sin(angle) * OUTER_DIST
 		var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
-		cell.sub_heights[i + 7] = elevation + detail
+		cell.sub_heights[i + 7] = e_norm + detail
 	cells[hex] = cell
 	return cell
 
@@ -242,10 +252,10 @@ func _generate_batch_gpu(batch: Array, bs: int) -> void:
 	rd.compute_list_end()
 
 	var raw: PackedByteArray = rd.buffer_get_data(_output_buf, 0, out_bytes)
+	rd.free_rid(_gpu_uniform_set)
 	rd.free_rid(_params_buf)
 	rd.free_rid(_origins_buf)
 	rd.free_rid(_output_buf)
-	rd.free_rid(_gpu_uniform_set)
 
 	if raw.size() < out_bytes:
 		_generate_batch_cpu(batch, bs)
@@ -267,9 +277,10 @@ func _generate_batch_gpu(batch: Array, bs: int) -> void:
 				if cells.has(hex):
 					continue
 				var cell_idx: int = (ci * CELLS_PER_CHUNK + cx * CHUNK_SIZE + cy) * FLOATS_PER_CELL
-				var elevation: float = floats[cell_idx]
-				var biome: int = int(floats[cell_idx + 1])
-				var cell := HexCellData.new(hex, biome, elevation)
+				var e_norm: float = floats[cell_idx]
+				var moisture: float = floats[cell_idx + 1]
+				var biome: int = _classify_biome(e_norm, moisture)
+				var cell := HexCellData.new(hex, biome, e_norm)
 				cell.color = BIOME_COLORS[clampi(biome, 0, BIOME_COLORS.size() - 1)]
 				for si in TOTAL_SUBS:
 					cell.sub_heights[si] = floats[cell_idx + 2 + si]
@@ -292,11 +303,13 @@ func _generate_batch_cpu(batch: Array, bs: int) -> void:
 				if cells.has(hex):
 					continue
 				var nval: float = _noise.get_noise_2d(float(q), float(r))
-				var biome: int = _classify_biome(nval)
-				var elevation: float = _remap_elevation(biome, nval)
-				var cell := HexCellData.new(hex, biome, elevation)
+				var moisture: float = _moisture_noise.get_noise_2d(float(q), float(r))
+				moisture = clampf(moisture * 0.5 + 0.5, 0.0, 1.0)
+				var e_norm: float = clampf(nval * 0.5 + 0.5, 0.0, 1.0)
+				var biome: int = _classify_biome(e_norm, moisture)
+				var cell := HexCellData.new(hex, biome, e_norm)
 				cell.color = BIOME_COLORS[clampi(biome, 0, BIOME_COLORS.size() - 1)]
-				cell.sub_heights[0] = elevation
+				cell.sub_heights[0] = e_norm
 				const INNER_DIST: float = HEX_SIZE * 0.57735026919
 				const OUTER_DIST: float = HEX_SIZE
 				for i in 6:
@@ -304,47 +317,28 @@ func _generate_batch_cpu(batch: Array, bs: int) -> void:
 					var sub_q: float = float(q) + cos(angle) * INNER_DIST
 					var sub_r: float = float(r) + sin(angle) * INNER_DIST
 					var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
-					cell.sub_heights[i + 1] = elevation + detail
+					cell.sub_heights[i + 1] = e_norm + detail
 				for i in 6:
 					var angle: float = deg_to_rad(60.0 * float(i))
 					var sub_q: float = float(q) + cos(angle) * OUTER_DIST
 					var sub_r: float = float(r) + sin(angle) * OUTER_DIST
 					var detail: float = _detail_noise.get_noise_2d(sub_q, sub_r) * 0.15
-					cell.sub_heights[i + 7] = elevation + detail
+					cell.sub_heights[i + 7] = e_norm + detail
 				cells[hex] = cell
 
 
-func _classify_biome(nval: float) -> int:
-	if nval < -0.3:
-		return BIOME_DEEP_WATER
-	elif nval < -0.1:
+static func _classify_biome(e_norm: float, moisture: float) -> int:
+	if e_norm < 0.25:
 		return BIOME_WATER
-	elif nval < 0.1:
+	if e_norm < 0.35:
 		return BIOME_BEACH
-	elif nval < 0.4:
-		return BIOME_GRASS
-	elif nval < 0.7:
-		return BIOME_DIRT
-	else:
+	if e_norm > 0.72:
 		return BIOME_STONE
-
-
-func _remap_elevation(biome: int, nval: float) -> float:
-	match biome:
-		BIOME_DEEP_WATER:
-			return remap(nval, -1.0, -0.3, 0.1, 0.3)
-		BIOME_WATER:
-			return remap(nval, -0.3, -0.1, 0.3, 0.5)
-		BIOME_BEACH:
-			return remap(nval, -0.1, 0.1, 0.5, 0.7)
-		BIOME_GRASS:
-			return remap(nval, 0.1, 0.4, 0.7, 1.8)
-		BIOME_DIRT:
-			return remap(nval, 0.4, 0.7, 1.8, 2.8)
-		BIOME_STONE:
-			return remap(nval, 0.7, 1.4, 2.8, 4.0)
-		_:
-			return remap(nval, -1.0, 1.0, 0.3, 3.0)
+	if moisture < 0.25:
+		return BIOME_GRASS
+	if moisture < 0.55:
+		return BIOME_DIRT
+	return BIOME_STONE
 
 
 func sample_height(world_pos: Vector3) -> float:
@@ -353,12 +347,11 @@ func sample_height(world_pos: Vector3) -> float:
 	var q: float = 0.66666666667 * world_pos.x / HEX_SIZE
 	var r: float = (-0.33333333333 * world_pos.x + 0.57735026919 * world_pos.z) / HEX_SIZE
 	var nval: float = _noise.get_noise_2d(q, r)
-	var biome: int = _classify_biome(nval)
-	if biome == BIOME_DEEP_WATER or biome == BIOME_WATER:
+	var e_norm: float = clampf(nval * 0.5 + 0.5, 0.0, 1.0)
+	if e_norm < 0.25:
 		return 0.3
-	var elevation: float = _remap_elevation(biome, nval)
 	var hex_width: float = HEX_SIZE * 1.73205080757
-	return maxf(elevation, 0.0) * hex_width + HEX_SIZE
+	return maxf(e_norm, 0.0) * hex_width + HEX_SIZE
 
 
 func sample_biome(world_pos: Vector3) -> int:
@@ -367,7 +360,10 @@ func sample_biome(world_pos: Vector3) -> int:
 	var q: float = 0.66666666667 * world_pos.x / HEX_SIZE
 	var r: float = (-0.33333333333 * world_pos.x + 0.57735026919 * world_pos.z) / HEX_SIZE
 	var nval: float = _noise.get_noise_2d(q, r)
-	return _classify_biome(nval)
+	var moisture: float = _moisture_noise.get_noise_2d(float(q), float(r))
+	moisture = clampf(moisture * 0.5 + 0.5, 0.0, 1.0)
+	var e_norm: float = clampf(nval * 0.5 + 0.5, 0.0, 1.0)
+	return _classify_biome(e_norm, moisture)
 
 
 # ============================================================================

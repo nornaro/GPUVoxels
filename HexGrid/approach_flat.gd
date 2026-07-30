@@ -3,25 +3,23 @@ extends Node3D
 const HEX_SIZE: float = 1.1547
 const HEX_SIZE_X15: float = 1.73205
 const HEX_SIZE_SQRT3: float = 2.0
-const CHUNK_HEXES: int = 32
-const VIEW_CHUNKS: int = 6
+const VIEW_CHUNKS: int = 13
 const CUBE_DIRECTIONS: Array = [
 	Vector3i(1, 0, -1), Vector3i(1, -1, 0), Vector3i(0, -1, 1),
 	Vector3i(-1, 0, 1), Vector3i(-1, 1, 0), Vector3i(0, 1, -1),
 ]
-const VERTEX_NEIGHBORS: Array = [
+const CORNER_NBORS: Array = [
 	[0, 1], [0, 5], [5, 4], [4, 3], [3, 2], [2, 1],
 ]
-
-const CHUNKS_PER_FRAME: int = 1
 
 var grid_radius: int = 100
 var _shared_mat: ShaderMaterial
 var _corners_x: PackedFloat64Array
 var _corners_z: PackedFloat64Array
-var _chunks := {}
+var _mesh_instance: MeshInstance3D
 var _last_cam_chunk := Vector2i(999999, 999999)
-var _chunk_queue: Array[Vector2i] = []
+var _needed_hexes: Array[Vector3i] = []
+
 
 func _ready() -> void:
 	grid_radius = get_meta("grid_radius", 100)
@@ -33,29 +31,17 @@ func _ready() -> void:
 		var angle := deg_to_rad(60.0 * float(i))
 		_corners_x.append(cos(angle) * HEX_SIZE)
 		_corners_z.append(sin(angle) * HEX_SIZE)
+	_mesh_instance = MeshInstance3D.new()
+	_mesh_instance.material_override = _shared_mat
+	_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	add_child(_mesh_instance)
 	var cam := get_viewport().get_camera_3d()
 	if cam:
 		var qf := cam.global_position.x / HEX_SIZE_X15
 		var rf := cam.global_position.z / HEX_SIZE_SQRT3 - qf * 0.5
-		var cq := floori(qf / CHUNK_HEXES)
-		var cr := floori(rf / CHUNK_HEXES)
-		_update_chunks(Vector2i(cq, cr), true)
+		_rebuild_all(Vector2i(floori(qf / 8), floori(rf / 8)))
 	else:
-		_update_chunks(Vector2i(999999, 999999), true)
-	var t := Time.get_ticks_msec()
-	var cells_dict: Dictionary = get_parent().get("cells") if get_parent() else {}
-	var cm = get_parent().get("chunk_manager") if get_parent() else null
-	for key in _chunk_queue:
-		var q_lo := maxi(key.x * CHUNK_HEXES, -grid_radius)
-		var q_hi := mini(q_lo + CHUNK_HEXES - 1, grid_radius)
-		if key.x * CHUNK_HEXES < -grid_radius:
-			q_lo = -grid_radius
-			q_hi = mini(q_lo + CHUNK_HEXES - 1, grid_radius)
-		var r_min_global := maxi(-grid_radius, key.y * CHUNK_HEXES)
-		var r_max_global := mini(grid_radius, key.y * CHUNK_HEXES + CHUNK_HEXES - 1)
-		_batch_generate_cells(q_lo, q_hi, r_min_global, r_max_global, cells_dict, cm)
-	var elapsed := (Time.get_ticks_msec() - t) / 1000.0
-	print("[Approach B] Queued %d chunks, pre-generated cells in %.2fs" % [_chunk_queue.size(), elapsed])
+		_rebuild_all(Vector2i(0, 0))
 
 
 func _process(_delta: float) -> void:
@@ -64,164 +50,126 @@ func _process(_delta: float) -> void:
 		return
 	var qf := cam.global_position.x / HEX_SIZE_X15
 	var rf := cam.global_position.z / HEX_SIZE_SQRT3 - qf * 0.5
-	var cq := floori(qf / CHUNK_HEXES)
-	var cr := floori(rf / CHUNK_HEXES)
-	var cc := Vector2i(cq, cr)
+	var cc := Vector2i(floori(qf / 8), floori(rf / 8))
 	if cc != _last_cam_chunk:
 		_last_cam_chunk = cc
-		_update_chunks(cc, false)
-	for _i in CHUNKS_PER_FRAME:
-		if _chunk_queue.is_empty():
-			break
-		_generate_chunk(_chunk_queue.pop_front())
+		_rebuild_all(cc)
 
 
-func rebuild_chunk_for_hex(hex: Vector3i) -> void:
-	var cq := floori(float(hex.x) / CHUNK_HEXES)
-	var cr := floori(float(hex.y) / CHUNK_HEXES)
-	var key := Vector2i(cq, cr)
-	if key in _chunks:
-		_chunks[key].queue_free()
-		_chunks.erase(key)
-	_generate_chunk(key)
+func rebuild_chunk_for_hex(_hex: Vector3i) -> void:
+	var cam := get_viewport().get_camera_3d()
+	if not cam:
+		return
+	var qf := cam.global_position.x / HEX_SIZE_X15
+	var rf := cam.global_position.z / HEX_SIZE_SQRT3 - qf * 0.5
+	_rebuild_all(Vector2i(floori(qf / 8), floori(rf / 8)))
 
 
-func _update_chunks(cam_chunk: Vector2i, initial: bool) -> void:
-	var needed := {}
+func _is_valid_hex(hex: Vector3i) -> bool:
+	return max(abs(hex.x), abs(hex.y), abs(hex.z)) <= grid_radius
+
+
+func _rebuild_all(cam_chunk: Vector2i) -> void:
+	_needed_hexes.clear()
 	for dq in range(-VIEW_CHUNKS, VIEW_CHUNKS + 1):
 		for dr in range(-VIEW_CHUNKS, VIEW_CHUNKS + 1):
-			var key := Vector2i(cam_chunk.x + dq, cam_chunk.y + dr)
-			if _chunk_has_hexes(key):
-				needed[key] = true
-				if key not in _chunks and key not in _chunk_queue:
-					_chunk_queue.append(key)
-	_chunk_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-		return (a - cam_chunk).length_squared() < (b - cam_chunk).length_squared()
-	)
+			var cq := cam_chunk.x + dq
+			var cr := cam_chunk.y + dr
+			for q in range(cq * 8, (cq + 1) * 8):
+				if q < -grid_radius or q > grid_radius:
+					continue
+				var r_min := maxi(maxi(-grid_radius, -q - grid_radius), cr * 8)
+				var r_max := mini(mini(grid_radius, -q + grid_radius), (cr + 1) * 8 - 1)
+				for ri in range(r_min, r_max + 1):
+					if ri + q <= grid_radius and ri + q >= -grid_radius:
+						_needed_hexes.append(Vector3i(q, ri, -q - ri))
 
-	var to_remove: Array[Vector2i] = []
-	for key in _chunks:
-		if key not in needed:
-			to_remove.append(key)
-	for key in to_remove:
-		_chunks[key].queue_free()
-		_chunks.erase(key)
+	var cells: Dictionary = get_parent().get("cells") if get_parent() else {}
+	var chunk_mgr = get_parent().get("chunk_manager") if get_parent() else null
+	_batch_generate_cells(cells, chunk_mgr)
 
-	if initial:
-		print("[Approach B] %d chunks queued" % _chunk_queue.size())
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
+	var total_hexes := _needed_hexes.size()
+	for idx in total_hexes:
+		var hex: Vector3i = _needed_hexes[idx]
+		var q := hex.x
+		var ri := hex.y
+		var cx := HEX_SIZE_X15 * float(q)
+		var z_off := HEX_SIZE_SQRT3 * float(q) * 0.5
+		var cz := HEX_SIZE_SQRT3 * float(ri) + z_off
+		var elevation := 0.0
+		var biome := 0
+		if cells.has(hex):
+			var cell: HexCellData = cells[hex]
+			elevation = cell.elevation
+			biome = cell.biome
+		var e_norm := clampf(elevation, 0.0, 1.0)
+		var biome_norm := float(biome) / 10.0
+		var center_attr := Color(e_norm, biome_norm, 0.0, 1.0)
+
+		var corner_norms: Array[float] = []
+		corner_norms.resize(6)
+		for i in 6:
+			var nbors = CORNER_NBORS[i] as Array
+			var n1_dir = CUBE_DIRECTIONS[nbors[0]] as Vector3i
+			var n2_dir = CUBE_DIRECTIONS[nbors[1]] as Vector3i
+			var n1_hex := Vector3i(hex.x + n1_dir.x, hex.y + n1_dir.y, hex.z + n1_dir.z)
+			var n2_hex := Vector3i(hex.x + n2_dir.x, hex.y + n2_dir.y, hex.z + n2_dir.z)
+			var avg := e_norm
+			var count := 1.0
+			if _is_valid_hex(n1_hex) and cells.has(n1_hex):
+				avg += clampf(cells[n1_hex].elevation, 0.0, 1.0)
+				count += 1.0
+			if _is_valid_hex(n2_hex) and cells.has(n2_hex):
+				avg += clampf(cells[n2_hex].elevation, 0.0, 1.0)
+				count += 1.0
+			corner_norms[i] = avg / count
+
+		for i in 6:
+			var next := (i + 1) % 6
+			st.set_normal(Vector3(0.0, 1.0, 0.0))
+			st.set_custom(0, center_attr)
+			st.add_vertex(Vector3(cx, 0.0, cz))
+			st.set_normal(Vector3(0.0, 1.0, 0.0))
+			st.set_custom(0, Color(corner_norms[next], biome_norm, 0.0, 1.0))
+			st.add_vertex(Vector3(cx + _corners_x[next], 0.0, cz + _corners_z[next]))
+			st.set_normal(Vector3(0.0, 1.0, 0.0))
+			st.set_custom(0, Color(corner_norms[i], biome_norm, 0.0, 1.0))
+			st.add_vertex(Vector3(cx + _corners_x[i], 0.0, cz + _corners_z[i]))
+
+	var mesh := st.commit()
+	_mesh_instance.mesh = mesh
 
 
-func _chunk_has_hexes(key: Vector2i) -> bool:
-	var q_lo := key.x * CHUNK_HEXES
-	var q_hi := q_lo + CHUNK_HEXES - 1
-	var r_lo := key.y * CHUNK_HEXES
-	var r_hi := r_lo + CHUNK_HEXES - 1
-	for q in [q_lo, q_hi]:
-		for r in [r_lo, r_hi]:
-			if q + r >= -grid_radius and q + r <= grid_radius and q >= -grid_radius and q <= grid_radius and r >= -grid_radius and r <= grid_radius:
-				return true
-	return false
-
-
-func _batch_generate_cells(q_lo: int, q_hi: int, r_lo: int, r_max: int, cells: Dictionary, chunk_mgr) -> void:
+func _batch_generate_cells(cells: Dictionary, chunk_mgr) -> void:
 	if not chunk_mgr or not chunk_mgr.is_initialized():
 		return
 	var cm: ChunkManager = chunk_mgr
 	var seen: Dictionary = {}
 	var batch: Array = []
-	for q in range(q_lo, q_hi + 1):
-		for ri in range(r_lo, r_max + 1):
-			var hex := Vector3i(q, ri, -q - ri)
-			if not cells.has(hex):
-				var ck := Vector2i(floori(float(q) / cm.CHUNK_SIZE), floori(float(ri) / cm.CHUNK_SIZE))
-				if not seen.has(ck):
-					seen[ck] = true
-					batch.append(ck)
+	for hex in _needed_hexes:
+		if not cells.has(hex):
+			var ck := Vector2i(floori(float(hex.x) / cm.CHUNK_SIZE), floori(float(hex.y) / cm.CHUNK_SIZE))
+			if not seen.has(ck):
+				seen[ck] = true
+				batch.append(ck)
+		for i in 6:
+			var nbors = CORNER_NBORS[i] as Array
+			var n1_dir = CUBE_DIRECTIONS[nbors[0]] as Vector3i
+			var n2_dir = CUBE_DIRECTIONS[nbors[1]] as Vector3i
+			var n1_hex := Vector3i(hex.x + n1_dir.x, hex.y + n1_dir.y, hex.z + n1_dir.z)
+			var n2_hex := Vector3i(hex.x + n2_dir.x, hex.y + n2_dir.y, hex.z + n2_dir.z)
+			if _is_valid_hex(n1_hex) and not cells.has(n1_hex):
+				var ck1 := Vector2i(floori(float(n1_hex.x) / cm.CHUNK_SIZE), floori(float(n1_hex.y) / cm.CHUNK_SIZE))
+				if not seen.has(ck1):
+					seen[ck1] = true
+					batch.append(ck1)
+			if _is_valid_hex(n2_hex) and not cells.has(n2_hex):
+				var ck2 := Vector2i(floori(float(n2_hex.x) / cm.CHUNK_SIZE), floori(float(n2_hex.y) / cm.CHUNK_SIZE))
+				if not seen.has(ck2):
+					seen[ck2] = true
+					batch.append(ck2)
 	if not batch.is_empty():
 		cm.generate_batch(batch)
-
-
-func _generate_chunk(key: Vector2i) -> void:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
-	var q_lo := maxi(key.x * CHUNK_HEXES, -grid_radius)
-	var q_hi := mini(q_lo + CHUNK_HEXES - 1, grid_radius)
-	if key.x * CHUNK_HEXES < -grid_radius:
-		q_lo = -grid_radius
-		q_hi = mini(q_lo + CHUNK_HEXES - 1, grid_radius)
-
-	var cells: Dictionary = get_parent().get("cells") if get_parent() else {}
-	var chunk_mgr = get_parent().get("chunk_manager") if get_parent() else null
-
-	var r_min_global := maxi(-grid_radius, key.y * CHUNK_HEXES)
-	var r_max_global := mini(grid_radius, key.y * CHUNK_HEXES + CHUNK_HEXES - 1)
-	_batch_generate_cells(q_lo, q_hi, r_min_global, r_max_global, cells, chunk_mgr)
-
-	for q in range(q_lo, q_hi + 1):
-		var qf := float(q)
-		var cx := HEX_SIZE_X15 * qf
-		var z_off := HEX_SIZE_SQRT3 * qf * 0.5
-		var r_min := maxi(maxi(-grid_radius, -q - grid_radius), key.y * CHUNK_HEXES)
-		var r_max := mini(mini(grid_radius, -q + grid_radius), key.y * CHUNK_HEXES + CHUNK_HEXES - 1)
-		for ri in range(r_min, r_max + 1):
-			var cz := HEX_SIZE_SQRT3 * float(ri) + z_off
-			var hex := Vector3i(q, ri, -q - ri)
-			var elevation := 0.0
-			var biome := 0
-			if cells.has(hex):
-				var cell: HexCellData = cells[hex]
-				elevation = cell.elevation
-				biome = cell.biome
-			elif chunk_mgr and chunk_mgr.is_initialized():
-				var cell: HexCellData = chunk_mgr.get_or_create_cell(hex)
-				if cell:
-					elevation = cell.elevation
-					biome = cell.biome
-			var e_norm := clampf(elevation / 4.0, 0.0, 1.0)
-			var biome_norm := float(biome) / 10.0
-			var center_attr := Color(e_norm, biome_norm, 0.0, 1.0)
-			var corner_attrs: Array[Color] = []
-			for ci in 6:
-				var n1: Vector3i = hex + CUBE_DIRECTIONS[VERTEX_NEIGHBORS[ci][0]] as Vector3i
-				var n2: Vector3i = hex + CUBE_DIRECTIONS[VERTEX_NEIGHBORS[ci][1]] as Vector3i
-				var avg_e := elevation
-				var count := 1
-				var cell_n1: HexCellData = null
-				var cell_n2: HexCellData = null
-				if cells.has(n1):
-					cell_n1 = cells[n1]
-				elif chunk_mgr and chunk_mgr.is_initialized():
-					cell_n1 = chunk_mgr.get_or_create_cell(n1)
-				if cell_n1:
-					avg_e += cell_n1.elevation
-					count += 1
-				if cells.has(n2):
-					cell_n2 = cells[n2]
-				elif chunk_mgr and chunk_mgr.is_initialized():
-					cell_n2 = chunk_mgr.get_or_create_cell(n2)
-				if cell_n2:
-					avg_e += cell_n2.elevation
-					count += 1
-				avg_e /= count
-				var cn := clampf(avg_e / 4.0, 0.0, 1.0)
-				corner_attrs.append(Color(cn, biome_norm, 0.0, 1.0))
-			for i in 6:
-				var next := (i + 1) % 6
-				st.set_normal(Vector3(0.0, 1.0, 0.0))
-				st.set_custom(0, center_attr)
-				st.add_vertex(Vector3(cx, 0.0, cz))
-				st.set_normal(Vector3(0.0, 1.0, 0.0))
-				st.set_custom(0, corner_attrs[next])
-				st.add_vertex(Vector3(cx + _corners_x[next], 0.0, cz + _corners_z[next]))
-				st.set_normal(Vector3(0.0, 1.0, 0.0))
-				st.set_custom(0, corner_attrs[i])
-				st.add_vertex(Vector3(cx + _corners_x[i], 0.0, cz + _corners_z[i]))
-
-	var mesh := st.commit()
-	var mmi := MeshInstance3D.new()
-	mmi.mesh = mesh
-	mmi.material_override = _shared_mat
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	add_child(mmi)
-	_chunks[key] = mmi

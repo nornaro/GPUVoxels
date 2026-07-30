@@ -12,7 +12,7 @@ func compute_tile_value(hex: Vector3i, elevation: float) -> float:
 	var dist := maxi(maxi(absi(hex.x), absi(hex.y)), absi(hex.z))
 	var dist_score := 1.0 - clampf(float(dist - TARGET_RADIUS) / 50.0, 0.0, 1.0)
 
-	var elev_norm := clampf(elevation / 4.0, 0.0, 1.0)
+	var elev_norm := clampf(elevation, 0.0, 1.0)
 	var elev_score := elev_norm
 
 	var value := dist_score * 0.7 + elev_score * 0.3

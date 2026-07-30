@@ -108,20 +108,6 @@ void main() {
 	moisture = moisture * 0.5 + 0.5;
 	moisture = clamp(moisture, 0.0, 1.0);
 
-	float water_line = 0.32;
-	int biome;
-	if (elevation < water_line * 0.5) {
-		biome = 0;
-	} else if (elevation < water_line) {
-		biome = 1;
-	} else if (elevation < water_line + 0.04) {
-		biome = 2;
-	} else if (elevation < 0.7) {
-		biome = (moisture > 0.5) ? 3 : 4;
-	} else {
-		biome = 5;
-	}
-
 	float sub_heights[13];
 	sub_heights[0] = elevation;
 
@@ -159,7 +145,7 @@ void main() {
 	int cell_idx = cell.x * ics + cell.y;
 	int idx = (chunk_id * cells_per_chunk + cell_idx) * 15;
 	data[idx] = elevation;
-	data[idx + 1] = float(biome);
+	data[idx + 1] = moisture;
 	for (int i = 0; i < 13; i++) {
 		data[idx + 2 + i] = sub_heights[i];
 	}

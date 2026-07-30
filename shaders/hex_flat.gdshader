@@ -6,9 +6,9 @@ uniform float noise_seed = 42.0;
 uniform int noise_octaves : hint_range(1, 8) = 6;
 uniform float noise_lacunarity = 2.0;
 uniform float noise_gain = 0.5;
-uniform float grid_line_width : hint_range(0.0, 0.5) = 0.08;
 uniform float height_step : hint_range(0.5, 5.0, 0.1) = 3.0;
 uniform float height_exp : hint_range(0.0, 4.0, 0.1) = 1.0;
+uniform float height_scale : hint_range(0.0, 5.0, 0.01) = 1.0;
 
 varying float v_elevation;
 varying float v_biome;
@@ -42,47 +42,12 @@ float fbm(vec2 p) {
 	return v;
 }
 
-float hex_sdf_flat_top(vec2 p, float inradius) {
-	p = abs(p);
-	return max(p.x * 0.86602540378 + p.y * 0.5, p.y) - inradius;
-}
-
-vec2 find_hex_center(vec2 p, float R) {
-	float s3 = sqrt(3.0);
-	float qf = (2.0 / 3.0 * p.x) / R;
-	float rf = (-1.0 / 3.0 * p.x + s3 / 3.0 * p.y) / R;
-	float sf = -qf - rf;
-
-	float rq = round(qf);
-	float rr = round(rf);
-	float rs = round(sf);
-
-	float dq = abs(rq - qf);
-	float dr = abs(rr - rf);
-	float ds = abs(rs - sf);
-
-	if (dq > dr && dq > ds) {
-		rq = -rr - rs;
-	} else if (dr > ds) {
-		rr = -rq - rs;
-	} else {
-		rs = -rq - rr;
-	}
-
-	return vec2(R * 1.5 * float(rq), R * s3 * (float(rr) + float(rq) * 0.5));
-}
-
-float hex_grid_line(vec2 p, float R) {
-	vec2 center = find_hex_center(p, R);
-	return hex_sdf_flat_top(p - center, R * 0.86602540378);
-}
-
 void vertex() {
 	float e_norm = CUSTOM0.r;
 	v_biome = CUSTOM0.g * 10.0;
 	v_elevation = e_norm;
 
-	float h = pow(max(height_step * e_norm, 0.001), height_exp);
+	float h = height_scale * pow(max(height_step * e_norm, 0.001), height_exp);
 	VERTEX.y = h;
 
 	vec4 wp = MODEL_MATRIX * vec4(VERTEX, 1.0);
@@ -90,42 +55,40 @@ void vertex() {
 }
 
 vec3 biome_color(float b, float elev, float detail) {
-	vec3 deep_water = vec3(0.04, 0.22, 0.45);
-	vec3 water = vec3(0.1, 0.55, 0.7);
+	vec3 water = vec3(0.08, 0.35, 0.65);
 	vec3 beach = vec3(0.76, 0.7, 0.45);
 	vec3 grass = vec3(0.3 + detail, 0.65 + detail, 0.15 + detail);
-	vec3 dirt = vec3(0.45 + detail, 0.35 + detail, 0.18 + detail);
-	float snow = smoothstep(0.65, 1.0, elev);
-	vec3 stone = mix(vec3(0.55 + detail, 0.55 + detail, 0.58 + detail), vec3(0.95), snow);
+	vec3 forest = vec3(0.18 + detail * 0.5, 0.45 + detail * 0.5, 0.1 + detail * 0.5);
+	vec3 rocky = vec3(0.55 + detail, 0.55 + detail, 0.58 + detail);
 
-	vec3 col = deep_water;
-	float w = 1.0;
+	vec3 col = water;
 	float blend = 0.15;
 
-	col = mix(col, water, smoothstep(0.5 - blend, 0.5 + blend, b));
-	col = mix(col, beach, smoothstep(1.5 - blend, 1.5 + blend, b));
-	col = mix(col, grass, smoothstep(2.5 - blend, 2.5 + blend, b));
-	col = mix(col, dirt, smoothstep(3.5 - blend, 3.5 + blend, b));
-	col = mix(col, stone, smoothstep(4.5 - blend, 4.5 + blend, b));
+	col = mix(col, beach, smoothstep(0.5 - blend, 0.5 + blend, b));
+	col = mix(col, grass, smoothstep(1.5 - blend, 1.5 + blend, b));
+	col = mix(col, forest, smoothstep(2.5 - blend, 2.5 + blend, b));
+	col = mix(col, rocky, smoothstep(3.5 - blend, 3.5 + blend, b));
+	col = mix(col, vec3(0.95), smoothstep(4.5 - blend, 4.5 + blend, b));
+
+	float snow = smoothstep(0.65, 0.95, elev);
+	col = mix(col, vec3(0.95), snow * 0.7);
 
 	return col;
 }
 
 void fragment() {
-	float v = fbm(v_world_xz.xz * 0.3 + 50.0) * 0.08;
-	float nz = fbm(v_world_xz.xz * 0.15 + 10.0) * 0.04;
-	float nz2 = fbm(v_world_xz.xz * 0.6 + 200.0) * 0.03;
+	float nz = fbm(v_world_xz.xz * 0.3 + 50.0) * 0.08;
 
-	vec3 col = biome_color(v_biome, v_elevation, v + nz + nz2);
+	vec3 col = biome_color(v_biome, v_elevation, nz);
 
-	vec3 water_col = vec3(0.04, 0.22, 0.45);
-	if (v_biome < 1.5) {
+	vec3 water_col = vec3(0.08, 0.35, 0.65);
+	if (v_biome < 0.5) {
 		col = mix(col, water_col, 0.6);
-		ALPHA = 0.8;
+		ALPHA = 1.0;
 		METALLIC = 0.1;
 		ROUGHNESS = 0.2;
 		SPECULAR = 0.6;
-	} else if (v_biome < 2.5) {
+	} else if (v_biome < 1.5) {
 		ROUGHNESS = 0.7;
 	} else if (v_biome < 3.5) {
 		ROUGHNESS = 0.8;
@@ -133,10 +96,6 @@ void fragment() {
 		float snow = smoothstep(0.65, 1.0, v_elevation);
 		ROUGHNESS = mix(0.7, 0.35, snow);
 	}
-
-	float sdf = hex_grid_line(v_world_xz.xz, 1.1547);
-	float line = 1.0 - smoothstep(0.0, grid_line_width, abs(sdf));
-	col = mix(col, vec3(0.0), line * 0.7);
 
 	ALBEDO = col;
 }

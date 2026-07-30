@@ -10,14 +10,14 @@ const VERTEX_NEIGHBORS: Array = [
 	[0, 1], [0, 5], [5, 4], [4, 3], [3, 2], [2, 1],
 ]
 
-const BIOME_DEEP_WATER := 0
-const BIOME_WATER := 1
-const BIOME_BEACH := 2
-const BIOME_GRASS := 3
-const BIOME_DIRT := 4
-const BIOME_STONE := 5
+const BIOME_WATER := 0
+const BIOME_BEACH := 1
+const BIOME_GRASS := 2
+const BIOME_DIRT := 3
+const BIOME_STONE := 4
+const BIOME_SNOW := 5
 
-const BIOME_NAMES := ["Deep Water", "Water", "Beach", "Grass", "Dirt", "Stone"]
+const BIOME_NAMES := ["Water", "Beach", "Grass", "Forest", "Rocky", "Snow"]
 
 const ELEVATION_STEPS: Array[float] = [1.0, 0.1, 0.01, 0.0]
 const ELEVATION_STEP_NAMES: Array[String] = ["Step 1.0", "Step 0.1", "Step 0.01", "Flat"]
@@ -155,6 +155,9 @@ var _radius_input: LineEdit
 var _exp_slider: HSlider
 var _exp_label: Label
 var _exp_input: LineEdit
+var _scale_slider: HSlider
+var _scale_label: Label
+var _scale_input: LineEdit
 
 var _cursor_instance: MeshInstance3D
 var _last_cursor_hex: Vector3i = INVALID_HEX
@@ -213,6 +216,8 @@ func _ready() -> void:
 	call_deferred("_on_flat")
 	if _height_slider:
 		_enemy_manager.set_height_params(_height_slider.value, _exp_slider.value)
+	if _scale_slider:
+		_apply_uniform("height_scale", _scale_slider.value)
 	print("Ready.")
 
 
@@ -237,8 +242,6 @@ func _process(delta: float) -> void:
 	var cur_hex := _get_mouse_hex()
 	_mouse_hex_valid = true
 	_cached_mouse_hex = cur_hex
-	var t1 := Time.get_ticks_usec()
-
 	_overlay_rebuild_timer -= delta
 
 	if show_overlay or show_resources or (tool_mode == 4 and not selected_model_path.is_empty()):
@@ -254,14 +257,10 @@ func _process(delta: float) -> void:
 		_rebuild_overlay_mesh()
 		_needs_rebuild = false
 		_overlay_rebuild_timer = 0.08
-	var t2 := Time.get_ticks_usec()
-
 	if tool_mode == 4:
 		_update_ghost_position(cur_hex)
 	_update_hover_info(cur_hex)
 	_update_cursor(cur_hex)
-	var t3 := Time.get_ticks_usec()
-
 	_mob_print_timer -= delta
 	if _mob_print_timer <= 0.0:
 		_mob_print_timer = 60.0
@@ -591,12 +590,12 @@ func _cell_exists(hex: Vector3i) -> bool:
 func _get_cell_height(cell: HexCellData) -> float:
 	var step_size := _height_slider.value if _height_slider else 3.0
 	var exp_val := _exp_slider.value if _exp_slider else 1.0
-	var e_norm := clampf(cell.elevation / 4.0, 0.0, 1.0)
+	var e_norm := clampf(cell.elevation, 0.0, 1.0)
 	return pow(maxf(step_size * e_norm, 0.001), exp_val)
 
 
 func _is_water_biome(biome: int) -> bool:
-	return biome == BIOME_DEEP_WATER or biome == BIOME_WATER
+	return biome == BIOME_WATER
 
 
 func _is_sub_hex_water(hex: Vector3i, _sub_idx: int) -> bool:
@@ -935,6 +934,7 @@ func _apply_uniform(uniform_name: String, value: Variant) -> void:
 func _apply_all_uniforms() -> void:
 	_apply_uniform("height_step", _height_slider.value)
 	_apply_uniform("height_exp", _exp_slider.value)
+	_apply_uniform("height_scale", _scale_slider.value)
 	_apply_uniform("grid_line_width", _grid_slider.value)
 	if chunk_manager:
 		_apply_uniform("noise_freq", chunk_manager.noise_freq)
@@ -1065,7 +1065,7 @@ func _compute_resources_for_hex(hex: Vector3i) -> Array[Dictionary]:
 	if not _cell_exists(hex):
 		return resources
 	var cell: HexCellData = cells[hex]
-	if cell.biome == BIOME_DEEP_WATER or cell.biome == BIOME_WATER or cell.biome == BIOME_BEACH:
+	if cell.biome == BIOME_WATER or cell.biome == BIOME_BEACH:
 		return resources
 	var hex_h := float(hex.x) * 0.7 + float(hex.y) * 1.3
 	var cluster := _resource_noise(hex_h)
@@ -1268,13 +1268,13 @@ func _get_corner_enorm(cell: HexCellData, corner_idx: int) -> float:
 	if cells.has(n2):
 		avg_e += cells[n2].elevation
 		count += 1
-	return clampf(avg_e / float(count) / 4.0, 0.0, 1.0)
+	return clampf(avg_e / float(count), 0.0, 1.0)
 
 
 func _get_height_at_local_offset(cell: HexCellData, lx: float, lz: float) -> float:
 	var step_size := _height_slider.value if _height_slider else 3.0
 	var exp_val := _exp_slider.value if _exp_slider else 1.0
-	var center_en := clampf(cell.elevation / 4.0, 0.0, 1.0)
+	var center_en := clampf(cell.elevation, 0.0, 1.0)
 	if absf(lx) < 0.001 and absf(lz) < 0.001:
 		return pow(maxf(step_size * center_en, 0.001), exp_val)
 	var angle_deg := rad_to_deg(atan2(lz, lx))
@@ -1685,6 +1685,32 @@ func _setup_left_menu(canvas: CanvasLayer) -> void:
 	_exp_slider.value_changed.connect(_on_exp_changed)
 	vbox.add_child(_exp_slider)
 
+	var sep_scale := HSeparator.new()
+	vbox.add_child(sep_scale)
+
+	_scale_label = Label.new()
+	_scale_label.text = "Height Scale:"
+	_scale_label.add_theme_font_size_override("font_size", 12)
+	_scale_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scale_input = LineEdit.new()
+	_scale_input.text = "1.0"
+	_scale_input.custom_minimum_size = Vector2(60, 0)
+	_scale_input.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_scale_input.text_submitted.connect(_on_scale_input)
+	var _scale_row := HBoxContainer.new()
+	_scale_row.add_child(_scale_label)
+	_scale_row.add_child(_scale_input)
+	vbox.add_child(_scale_row)
+
+	_scale_slider = HSlider.new()
+	_scale_slider.min_value = 0.0
+	_scale_slider.max_value = 5.0
+	_scale_slider.step = 0.01
+	_scale_slider.value = 1.0
+	_scale_slider.custom_minimum_size = Vector2(180, 0)
+	_scale_slider.value_changed.connect(_on_scale_changed)
+	vbox.add_child(_scale_slider)
+
 	var sep_grid := HSeparator.new()
 	vbox.add_child(sep_grid)
 
@@ -1919,6 +1945,16 @@ func _on_exp_changed(value: float) -> void:
 	if _enemy_manager:
 		_enemy_manager.set_height_params(_height_slider.value, value)
 		_enemy_manager.invalidate_all_paths()
+
+
+func _on_scale_changed(value: float) -> void:
+	_scale_input.text = "%.2f" % value
+	_apply_uniform("height_scale", value)
+
+
+func _on_scale_input(text: String) -> void:
+	var val := text.to_float()
+	_scale_slider.value = clampf(val, 0.0, 5.0)
 
 
 func _on_grid_changed(value: float) -> void:
